@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "installCommand": "npm install && PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium",
+  "installCommand": "npm install",
   "buildCommand": "npm run build",
   "builds": [
     {
@@ -8,16 +8,6 @@
       "use": "@vercel/node"
     }
   ],
-  "functions": {
-    "api/index.ts": {
-      "includeFiles": "node_modules/playwright-core/.local-browsers/**",
-      "memory": 1024,
-      "maxDuration": 60
-    }
-  },
-  "env": {
-    "PLAYWRIGHT_BROWSERS_PATH": "0"
-  },
   "routes": [
     {
       "src": "/(.*)",
