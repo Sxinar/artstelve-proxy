@@ -1,4 +1,4 @@
-import { chromium, type Browser, type LaunchOptions } from 'playwright';
+import type { Browser, LaunchOptions } from 'playwright';
 
 let browserPromise: Promise<Browser> | null = null;
 
@@ -10,7 +10,7 @@ export async function getBrowser(): Promise<Browser> {
     const opts: LaunchOptions = {
       headless: true
     };
-    browserPromise = chromium.launch(opts);
+    browserPromise = import('playwright').then(({ chromium }) => chromium.launch(opts));
   }
   return browserPromise;
 }

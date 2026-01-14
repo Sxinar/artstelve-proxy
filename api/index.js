@@ -1,5 +1,5 @@
-import { app } from '../dist/app.js';
-
-export default function handler(req, res) {
-  return app(req, res);
-}
+export default function handler(_req, res) {
+   res.statusCode = 404;
+   res.setHeader('content-type', 'application/json; charset=utf-8');
+   res.end(JSON.stringify({ error: 'not found' }));
+ }
