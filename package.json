@@ -10,7 +10,7 @@
     "dev": "tsx watch src/server.ts",
     "start": "node --enable-source-maps dist/server.js",
     "build": "tsc -p tsconfig.json",
-    "postinstall": "playwright install chromium"
+    "postinstall": "cross-env PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium"
   },
   "dependencies": {
     "cors": "^2.8.5",
@@ -23,6 +23,7 @@
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/node": "^22.10.2",
+    "cross-env": "^7.0.3",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3"
   }
