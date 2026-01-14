@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import 'dotenv/config';
 import { metaSearch, parseEnginesParam } from './searchService.js';
 import { engines } from './engines/index.js';
 
@@ -195,7 +196,7 @@ app.get('/search', async (req: Request, res: Response) => {
   }
 
   const controller = new AbortController();
-  const timeoutMs = Math.max(3000, Math.min(30000, Number(req.query.timeoutMs ?? 20000)));
+  const timeoutMs = Math.max(3000, Math.min(30000, Number(req.query.timeoutMs ?? 12000)));
   const t = setTimeout(() => controller.abort(), timeoutMs);
 
   try {

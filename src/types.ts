@@ -1,7 +1,7 @@
 export type SearchEngineId =
   | 'duckduckgo'
+  | 'google'
   | 'yahoo'
-  | 'yandex'
   | 'brave'
   | 'startpage'
   | 'qwant'

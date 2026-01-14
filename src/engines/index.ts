@@ -1,7 +1,7 @@
 import type { Engine } from './engine.js';
 import { duckduckgo } from './duckduckgo.js';
+import { google } from './google.js';
 import { yahoo } from './yahoo.js';
-import { yandex } from './yandex.js';
 import { brave } from './brave.js';
 import { startpage } from './startpage.js';
 import { qwant } from './qwant.js';
@@ -12,8 +12,8 @@ import { aol } from './aol.js';
 
 export const engines: Engine[] = [
   duckduckgo,
+  google,
   yahoo,
-  yandex,
   brave,
   startpage,
   qwant,

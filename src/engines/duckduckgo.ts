@@ -4,6 +4,24 @@ import { fetchHtml } from '../http/fetchHtml.js';
 import { loadHtml } from '../html/load.js';
 import type { AnyNode } from 'domhandler';
 
+function extractDuckDuckGoUrl(href: string, baseUrl: string): string {
+  try {
+    if (!href) return '';
+    const abs = new URL(href, baseUrl);
+    const uddg = abs.searchParams.get('uddg');
+    if (uddg) {
+      try {
+        return decodeURIComponent(uddg);
+      } catch {
+        return uddg;
+      }
+    }
+    return abs.toString();
+  } catch {
+    return '';
+  }
+}
+
 async function assertNotBlockedOrEmpty(params: { url: string; html: string; count: number; status: number }): Promise<void> {
   if (params.count > 0) return;
   const hay = `${params.url}\n${params.html}`.toLowerCase();
@@ -66,7 +84,7 @@ export const duckduckgo: Engine = {
 
       for (const it of items) {
         if (!it.title || !it.url) continue;
-        const u = it.url ? new URL(it.url, baseUrl).toString() : '';
+        const u = extractDuckDuckGoUrl(it.url, baseUrl);
         if (!u) continue;
         out.push({ engine: 'duckduckgo', title: it.title, url: u, snippet: it.snippet || undefined });
         if (out.length >= limit) break;
@@ -92,7 +110,7 @@ export const duckduckgo: Engine = {
 
       for (const it of nodes) {
         if (!it.title || !it.url) continue;
-        const u = it.url ? new URL(it.url, baseUrl).toString() : '';
+        const u = extractDuckDuckGoUrl(it.url, baseUrl);
         if (!u) continue;
         out.push({ engine: 'duckduckgo', title: it.title, url: u, snippet: it.snippet || undefined });
         if (out.length >= limit) break;
@@ -102,7 +120,7 @@ export const duckduckgo: Engine = {
 
     // 1) Try lite
     const liteUrl = `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`;
-    const lite = await fetchHtml(liteUrl, { signal, timeoutMs: 20000 });
+    const lite = await fetchHtml(liteUrl, { signal, timeoutMs: 12000 });
     let results = await parseLite(lite.html, lite.url);
     try {
       await assertNotBlockedOrEmpty({ url: lite.url, html: lite.html, count: results.length, status: lite.status });
@@ -114,7 +132,7 @@ export const duckduckgo: Engine = {
 
     // 2) Fallback to html endpoint
     const htmlUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-    const htmlRes = await fetchHtml(htmlUrl, { signal, timeoutMs: 20000 });
+    const htmlRes = await fetchHtml(htmlUrl, { signal, timeoutMs: 12000 });
     results = await parseHtml(htmlRes.html, htmlRes.url);
     await assertNotBlockedOrEmpty({ url: htmlRes.url, html: htmlRes.html, count: results.length, status: htmlRes.status });
     return results;

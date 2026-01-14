@@ -5,9 +5,7 @@ import type { EngineError, SearchEngineId, SearchResult } from './types.js';
 import { engines } from './engines/index.js';
 
 const engineMap = new Map<SearchEngineId, Engine>(engines.map((e) => [e.id, e]));
-const defaultEngines: SearchEngineId[] = engines
-  .map((e) => e.id)
-  .filter((id) => id !== 'yandex' && id !== 'duckduckgo');
+const defaultEngines: SearchEngineId[] = engines.map((e) => e.id);
 
 function parseDomainList(raw?: string): Set<string> {
   if (!raw) return new Set();
@@ -52,6 +50,7 @@ function matchesDomain(set: Set<string>, host: string): boolean {
 
 const engineWeight: Record<SearchEngineId, number> = {
   duckduckgo: 1.0,
+  google: 1.0,
   brave: 0.95,
   startpage: 0.9,
   qwant: 0.85,
@@ -59,8 +58,7 @@ const engineWeight: Record<SearchEngineId, number> = {
   mojeek: 0.75,
   yahoo: 0.7,
   aol: 0.65,
-  ask: 0.6,
-  yandex: 0.4
+  ask: 0.6
 };
 
 const cache = new LRUCache<string, { results: SearchResult[]; errors: EngineError[] }>({
@@ -68,8 +66,9 @@ const cache = new LRUCache<string, { results: SearchResult[]; errors: EngineErro
   ttl: 60_000
 });
 
+const perEngineConcurrency = Math.max(1, Math.min(3, Number(process.env.PER_ENGINE_CONCURRENCY ?? 2)));
 const perEngineLimit = new Map<SearchEngineId, ReturnType<typeof pLimit>>(
-  engines.map((e) => [e.id, pLimit(1)])
+  engines.map((e) => [e.id, pLimit(perEngineConcurrency)])
 );
 
 const blockedUntil = new Map<SearchEngineId, number>();
