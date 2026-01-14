@@ -7,6 +7,9 @@
       "use": "@vercel/node"
     }
   ],
+  "env": {
+    "PLAYWRIGHT_BROWSERS_PATH": "0"
+  },
   "routes": [
     {
       "src": "/(.*)",
