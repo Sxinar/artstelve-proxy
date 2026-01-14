@@ -72,6 +72,9 @@ const perEngineLimit = new Map<SearchEngineId, ReturnType<typeof pLimit>>(
   engines.map((e) => [e.id, pLimit(1)])
 );
 
+const blockedUntil = new Map<SearchEngineId, number>();
+const blockedCooldownMs = Math.max(30_000, Math.min(30 * 60_000, Number(process.env.BLOCKED_ENGINE_COOLDOWN_MS ?? 10 * 60_000)));
+
 export function parseEnginesParam(raw?: string): SearchEngineId[] {
   if (!raw) return defaultEngines;
   const parts = raw
@@ -110,6 +113,12 @@ export async function metaSearch(params: {
       const engine = engineMap.get(engineId);
       if (!engine) return [];
 
+       const until = blockedUntil.get(engineId);
+       if (until && until > Date.now()) {
+         errors.push({ engine: engineId, message: `skipped_recent_blocked until=${new Date(until).toISOString()}` });
+         return [];
+       }
+
       const limiter = perEngineLimit.get(engineId) ?? pLimit(1);
       return limiter(async () => {
         const p: EngineSearchParams = {
@@ -123,6 +132,9 @@ export async function metaSearch(params: {
           return out.map((r, idx) => ({ ...r, _pos: idx, _score: (engineWeight[engineId] ?? 0.5) / (1 + idx) }));
         } catch (e) {
           const msg = e instanceof Error ? e.message : 'engine error';
+          if (msg.startsWith('blocked_or_captcha')) {
+            blockedUntil.set(engineId, Date.now() + blockedCooldownMs);
+          }
           errors.push({ engine: engineId, message: msg });
           return [];
         }

@@ -35,44 +35,88 @@ async function assertNotBlockedOrEmpty(params: { url: string; html: string; coun
 export const duckduckgo: Engine = {
   id: 'duckduckgo',
   async search({ query, limit, signal }) {
-    const reqUrl = `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`;
-    const { html, url, status } = await fetchHtml(reqUrl, { signal, timeoutMs: 20000 });
-    const $ = loadHtml(html);
+    async function parseLite(html: string, baseUrl: string): Promise<SearchResult[]> {
+      const $ = loadHtml(html);
+      const out: SearchResult[] = [];
 
-    const results: SearchResult[] = [];
+      const primary = $('a.result-link')
+        .toArray()
+        .map((el: AnyNode) => {
+          const a = $(el);
+          const title = (a.text() || '').trim();
+          const href = (a.attr('href') || '').trim();
+          const row = a.closest('tr');
+          const snippet = (row.find('td.result-snippet').text() || '').trim();
+          return { title, url: href, snippet };
+        });
 
-    const primary = $('a.result-link')
-      .toArray()
-      .map((el: AnyNode) => {
-        const a = $(el);
-        const title = (a.text() || '').trim();
-        const href = (a.attr('href') || '').trim();
-        const row = a.closest('tr');
-        const snippet = (row.find('td.result-snippet').text() || '').trim();
-        return { title, url: href, snippet };
-      });
+      const items = primary.length
+        ? primary
+        : $('table a[href]')
+            .toArray()
+            .map((el: AnyNode) => {
+              const a = $(el);
+              const title = (a.text() || '').trim();
+              const href = (a.attr('href') || '').trim();
+              const row = a.closest('tr');
+              const snippet = (row.find('td.result-snippet').text() || '').trim();
+              return { title, url: href, snippet };
+            })
+            .filter((x: { title: string; url: string; snippet: string }) => x.title.length > 0 && x.url.length > 0);
 
-    const items = primary.length
-      ? primary
-      : $('table a[href]')
-          .toArray()
-          .map((el: AnyNode) => {
-            const a = $(el);
-            const title = (a.text() || '').trim();
-            const href = (a.attr('href') || '').trim();
-            const row = a.closest('tr');
-            const snippet = (row.find('td.result-snippet').text() || '').trim();
-            return { title, url: href, snippet };
-          })
-          .filter((x: { title: string; url: string; snippet: string }) => x.title.length > 0 && x.url.length > 0);
-
-    for (const it of items) {
-      if (!it.title || !it.url) continue;
-      results.push({ engine: 'duckduckgo', title: it.title, url: it.url, snippet: it.snippet || undefined });
-      if (results.length >= limit) break;
+      for (const it of items) {
+        if (!it.title || !it.url) continue;
+        const u = it.url ? new URL(it.url, baseUrl).toString() : '';
+        if (!u) continue;
+        out.push({ engine: 'duckduckgo', title: it.title, url: u, snippet: it.snippet || undefined });
+        if (out.length >= limit) break;
+      }
+      return out;
     }
 
-    await assertNotBlockedOrEmpty({ url, html, count: results.length, status });
+    async function parseHtml(html: string, baseUrl: string): Promise<SearchResult[]> {
+      const $ = loadHtml(html);
+      const out: SearchResult[] = [];
+
+      // html.duckduckgo.com uses a.result__a within .results
+      const nodes = $('a.result__a, .result__a')
+        .toArray()
+        .map((el: AnyNode) => {
+          const a = $(el);
+          const title = (a.text() || '').trim();
+          const href = (a.attr('href') || '').trim();
+          const container = a.closest('.result, .results_links, .result__body');
+          const snippet = (container.find('.result__snippet, .result__snippet').first().text() || '').trim();
+          return { title, url: href, snippet };
+        });
+
+      for (const it of nodes) {
+        if (!it.title || !it.url) continue;
+        const u = it.url ? new URL(it.url, baseUrl).toString() : '';
+        if (!u) continue;
+        out.push({ engine: 'duckduckgo', title: it.title, url: u, snippet: it.snippet || undefined });
+        if (out.length >= limit) break;
+      }
+      return out;
+    }
+
+    // 1) Try lite
+    const liteUrl = `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`;
+    const lite = await fetchHtml(liteUrl, { signal, timeoutMs: 20000 });
+    let results = await parseLite(lite.html, lite.url);
+    try {
+      await assertNotBlockedOrEmpty({ url: lite.url, html: lite.html, count: results.length, status: lite.status });
+      return results;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '';
+      if (!msg.startsWith('blocked_or_captcha')) throw e;
+    }
+
+    // 2) Fallback to html endpoint
+    const htmlUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const htmlRes = await fetchHtml(htmlUrl, { signal, timeoutMs: 20000 });
+    results = await parseHtml(htmlRes.html, htmlRes.url);
+    await assertNotBlockedOrEmpty({ url: htmlRes.url, html: htmlRes.html, count: results.length, status: htmlRes.status });
     return results;
   }
 };

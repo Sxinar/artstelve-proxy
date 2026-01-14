@@ -124,7 +124,7 @@ app.get('/', (_req: Request, res: Response) => {
       function syncOpenSearchLink() {
         const q = encodeURIComponent(el('q').value || '');
         const engines = encodeURIComponent(el('eng').value || '');
-        const url = '/search?q=' + q + '&engines=' + engines + '&limitTotal=10&limitPerEngine=5&timeoutMs=20000&cache=1';
+        const url = '/search?q=' + q + '&engines=' + engines + '&limitTotal=20&limitPerEngine=5&timeoutMs=20000&cache=1';
         el('openSearch').setAttribute('href', url);
       }
 
