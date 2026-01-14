@@ -8,6 +8,13 @@
       "use": "@vercel/node"
     }
   ],
+  "functions": {
+    "api/index.ts": {
+      "includeFiles": "node_modules/playwright-core/.local-browsers/**",
+      "memory": 1024,
+      "maxDuration": 60
+    }
+  },
   "env": {
     "PLAYWRIGHT_BROWSERS_PATH": "0"
   },
