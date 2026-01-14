@@ -1,40 +1,30 @@
 import type { Engine } from './engine.js';
-import { newContext } from '../browserPool.js';
 import type { SearchResult } from '../types.js';
-import { gotoWithRetries } from '../pageFetch.js';
+import { fetchHtml } from '../http/fetchHtml.js';
+import { loadHtml } from '../html/load.js';
+import type { AnyNode } from 'domhandler';
 
 export const ecosia: Engine = {
   id: 'ecosia',
   async search({ query, limit, signal }) {
-    const ctx = await newContext();
-    const page = await ctx.newPage();
+    const reqUrl = `https://www.ecosia.org/search?q=${encodeURIComponent(query)}`;
+    const { html } = await fetchHtml(reqUrl, { signal, timeoutMs: 20000 });
+    const $ = loadHtml(html);
 
-    try {
-      const url = `https://www.ecosia.org/search?q=${encodeURIComponent(query)}`;
-      await gotoWithRetries(page, url, { signal });
+    const results: SearchResult[] = [];
+    $('article.result, .result')
+      .toArray()
+      .some((el: AnyNode) => {
+        const n = $(el);
+        const a = n.find('a.result-title, a[href]').first();
+        const title = (a.text() || '').trim();
+        const url = (a.attr('href') || '').trim();
+        const snippet = (n.find('.result-snippet, p').first().text() || '').trim();
+        if (!title || !url) return false;
+        results.push({ engine: 'ecosia', title, url, snippet: snippet || undefined });
+        return results.length >= limit;
+      });
 
-      const items = await page.$$eval('article.result, .result', (nodes: Element[]) =>
-        nodes.map((n) => {
-          const a = n.querySelector('a.result-title, a[href]') as HTMLAnchorElement | null;
-          const s = n.querySelector('.result-snippet, p') as HTMLElement | null;
-          return {
-            title: (a?.textContent || '').trim(),
-            url: a?.href || '',
-            snippet: (s?.textContent || '').trim()
-          };
-        })
-      );
-
-      const results: SearchResult[] = [];
-      for (const it of items) {
-        if (!it.title || !it.url) continue;
-        results.push({ engine: 'ecosia', title: it.title, url: it.url, snippet: it.snippet || undefined });
-        if (results.length >= limit) break;
-      }
-      return results;
-    } finally {
-      await page.close().catch(() => {});
-      await ctx.close().catch(() => {});
-    }
+    return results;
   }
 };

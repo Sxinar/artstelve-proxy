@@ -1,44 +1,30 @@
 import type { Engine } from './engine.js';
-import { newContext } from '../browserPool.js';
 import type { SearchResult } from '../types.js';
-import { gotoWithRetries } from '../pageFetch.js';
+import { fetchHtml } from '../http/fetchHtml.js';
+import { loadHtml } from '../html/load.js';
+import type { AnyNode } from 'domhandler';
 
 export const qwant: Engine = {
   id: 'qwant',
   async search({ query, limit, signal }) {
-    const ctx = await newContext();
-    const page = await ctx.newPage();
+    const reqUrl = `https://www.qwant.com/?q=${encodeURIComponent(query)}&t=web`;
+    const { html, url: finalUrl } = await fetchHtml(reqUrl, { signal, timeoutMs: 20000 });
+    const $ = loadHtml(html);
 
-    try {
-      const url = `https://www.qwant.com/?q=${encodeURIComponent(query)}&t=web`;
-      await gotoWithRetries(page, url, { signal });
-
-      const items = await page.$$eval(
-        'a[data-testid="webResult-link"], a[href][data-testid*="result"]',
-        (nodes: Element[]) =>
-          nodes.map((aEl) => {
-            const link = aEl as HTMLAnchorElement;
-          const container = link.closest('article, li, div') as HTMLElement | null;
-          const titleEl = container?.querySelector('h2, h3') as HTMLElement | null;
-          const s = container?.querySelector('p') as HTMLElement | null;
-          return {
-            title: (titleEl?.textContent || link.textContent || '').trim(),
-            url: link.href || '',
-            snippet: (s?.textContent || '').trim()
-          };
-          })
-      );
-
-      const results: SearchResult[] = [];
-      for (const it of items) {
-        if (!it.title || !it.url) continue;
-        results.push({ engine: 'qwant', title: it.title, url: it.url, snippet: it.snippet || undefined });
-        if (results.length >= limit) break;
-      }
-      return results;
-    } finally {
-      await page.close().catch(() => {});
-      await ctx.close().catch(() => {});
+    const results: SearchResult[] = [];
+    const nodes = $('a[data-testid="webResult-link"], a[href][data-testid*="result"]').toArray();
+    for (const el of nodes) {
+      const a = $(el as AnyNode);
+      const hrefRaw = (a.attr('href') || '').trim();
+      const href = hrefRaw ? new URL(hrefRaw, finalUrl).toString() : '';
+      const container = a.closest('article, li, div');
+      const titleEl = container.find('h2, h3').first();
+      const title = ((titleEl.text() || a.text()) || '').trim();
+      const snippet = (container.find('p').first().text() || '').trim();
+      if (!title || !href) continue;
+      results.push({ engine: 'qwant', title, url: href, snippet: snippet || undefined });
+      if (results.length >= limit) break;
     }
+    return results;
   }
 };

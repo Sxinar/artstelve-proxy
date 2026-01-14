@@ -1,57 +1,58 @@
 import type { Engine } from './engine.js';
-import { newContext } from '../browserPool.js';
 import type { SearchResult } from '../types.js';
-import { gotoWithRetries } from '../pageFetch.js';
+import { fetchHtml } from '../http/fetchHtml.js';
+import { loadHtml } from '../html/load.js';
+import type { AnyNode } from 'domhandler';
 
-async function assertNotBlockedOrEmpty(page: import('playwright').Page, count: number): Promise<void> {
-  if (count > 0) return;
-  const title = (await page.title().catch(() => '')) || '';
-  const url = page.url();
-  const html = (await page.content().catch(() => '')) || '';
-  const hay = `${title}\n${url}\n${html}`.toLowerCase();
-  const blockedHints = ['captcha', 'unusual traffic', 'verify', 'robot', 'consent', 'blocked', 'access denied'];
+async function assertNotBlockedOrEmpty(params: { url: string; html: string; count: number; status: number }): Promise<void> {
+  if (params.count > 0) return;
+  const hay = `${params.url}\n${params.html}`.toLowerCase();
+  const blockedHints = [
+    'captcha',
+    'unusual traffic',
+    'verify',
+    'robot',
+    'consent',
+    'blocked',
+    'access denied',
+    'enable javascript',
+    'cloudflare',
+    'attention required'
+  ];
   const isBlocked = blockedHints.some((h) => hay.includes(h));
-  if (isBlocked) throw new Error(`blocked_or_captcha title=${JSON.stringify(title)} url=${JSON.stringify(url)}`);
-  throw new Error(`no_results_or_selector_mismatch title=${JSON.stringify(title)} url=${JSON.stringify(url)}`);
+  const snippet = params.html.replace(/\s+/g, ' ').slice(0, 220);
+  if (isBlocked || params.status === 403 || params.status === 429)
+    throw new Error(
+      `blocked_or_captcha status=${params.status} url=${JSON.stringify(params.url)} html_snippet=${JSON.stringify(snippet)}`
+    );
+  throw new Error(
+    `no_results_or_selector_mismatch status=${params.status} url=${JSON.stringify(params.url)} html_snippet=${JSON.stringify(snippet)}`
+  );
 }
 
 export const yandex: Engine = {
   id: 'yandex',
   async search({ query, limit, signal }) {
-    const ctx = await newContext();
-    const page = await ctx.newPage();
+    const reqUrl = `https://yandex.com/search/?text=${encodeURIComponent(query)}`;
+    const { html, url, status } = await fetchHtml(reqUrl, { signal, timeoutMs: 20000 });
+    const $ = loadHtml(html);
 
-    try {
-      const url = `https://yandex.com/search/?text=${encodeURIComponent(query)}`;
-      await gotoWithRetries(page, url, { signal });
-
-      await page.waitForSelector('li.serp-item a.Link[href], div.serp-item a.Link[href]', { timeout: 15000 }).catch(() => {});
-
-      const items = await page.$$eval('li.serp-item, div.serp-item', (nodes: Element[]) =>
-        nodes.map((n) => {
-          const a = n.querySelector('a.Link[href]') as HTMLAnchorElement | null;
-          const titleEl = n.querySelector('h2') as HTMLElement | null;
-          const s = n.querySelector('.OrganicTextContentSpan, .text-container') as HTMLElement | null;
-          return {
-            title: (titleEl?.textContent || a?.textContent || '').trim(),
-            url: a?.href || '',
-            snippet: (s?.textContent || '').trim()
-          };
-        })
-      );
-
-      const results: SearchResult[] = [];
-      for (const it of items) {
-        if (!it.title || !it.url) continue;
-        results.push({ engine: 'yandex', title: it.title, url: it.url, snippet: it.snippet || undefined });
-        if (results.length >= limit) break;
-      }
-
-      await assertNotBlockedOrEmpty(page, results.length);
-      return results;
-    } finally {
-      await page.close().catch(() => {});
-      await ctx.close().catch(() => {});
+    const results: SearchResult[] = [];
+    const nodes = $('li.serp-item, div.serp-item').toArray();
+    for (const el of nodes) {
+      const n = $(el as AnyNode);
+      const a = n.find('a.Link[href]').first();
+      const titleEl = n.find('h2').first();
+      const title = ((titleEl.text() || a.text()) || '').trim();
+      const hrefRaw = (a.attr('href') || '').trim();
+      const href = hrefRaw ? new URL(hrefRaw, url).toString() : '';
+      const snippet = (n.find('.OrganicTextContentSpan, .text-container').first().text() || '').trim();
+      if (!title || !href) continue;
+      results.push({ engine: 'yandex', title, url: href, snippet: snippet || undefined });
+      if (results.length >= limit) break;
     }
+
+    await assertNotBlockedOrEmpty({ url, html, count: results.length, status });
+    return results;
   }
 };

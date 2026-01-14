@@ -1,5 +1,4 @@
 import { app } from './app.js';
-import { closeBrowser } from './browserPool.js';
 
 const port = Number(process.env.PORT ?? 8787);
 const server = app.listen(port, () => {
@@ -8,7 +7,6 @@ const server = app.listen(port, () => {
 
 async function shutdown() {
   server.close(() => {});
-  await closeBrowser().catch(() => {});
   process.exit(0);
 }
 

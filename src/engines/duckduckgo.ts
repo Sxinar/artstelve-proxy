@@ -1,14 +1,12 @@
 import type { Engine } from './engine.js';
-import { newContext } from '../browserPool.js';
 import type { SearchResult } from '../types.js';
-import { gotoWithRetries } from '../pageFetch.js';
+import { fetchHtml } from '../http/fetchHtml.js';
+import { loadHtml } from '../html/load.js';
+import type { AnyNode } from 'domhandler';
 
-async function assertNotBlockedOrEmpty(page: import('playwright').Page, count: number): Promise<void> {
-  if (count > 0) return;
-  const title = (await page.title().catch(() => '')) || '';
-  const url = page.url();
-  const html = (await page.content().catch(() => '')) || '';
-  const hay = `${title}\n${url}\n${html}`.toLowerCase();
+async function assertNotBlockedOrEmpty(params: { url: string; html: string; count: number; status: number }): Promise<void> {
+  if (params.count > 0) return;
+  const hay = `${params.url}\n${params.html}`.toLowerCase();
   const blockedHints = [
     'captcha',
     'unusual traffic',
@@ -24,70 +22,57 @@ async function assertNotBlockedOrEmpty(page: import('playwright').Page, count: n
     'service unavailable'
   ];
   const isBlocked = blockedHints.some((h) => hay.includes(h));
-  const snippet = html.replace(/\s+/g, ' ').slice(0, 220);
-  if (isBlocked)
+  const snippet = params.html.replace(/\s+/g, ' ').slice(0, 220);
+  if (isBlocked || params.status === 403 || params.status === 429)
     throw new Error(
-      `blocked_or_captcha title=${JSON.stringify(title)} url=${JSON.stringify(url)} html_snippet=${JSON.stringify(snippet)}`
+      `blocked_or_captcha status=${params.status} url=${JSON.stringify(params.url)} html_snippet=${JSON.stringify(snippet)}`
     );
   throw new Error(
-    `no_results_or_selector_mismatch title=${JSON.stringify(title)} url=${JSON.stringify(url)} html_snippet=${JSON.stringify(snippet)}`
+    `no_results_or_selector_mismatch status=${params.status} url=${JSON.stringify(params.url)} html_snippet=${JSON.stringify(snippet)}`
   );
 }
 
 export const duckduckgo: Engine = {
   id: 'duckduckgo',
   async search({ query, limit, signal }) {
-    const ctx = await newContext();
-    const page = await ctx.newPage();
+    const reqUrl = `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`;
+    const { html, url, status } = await fetchHtml(reqUrl, { signal, timeoutMs: 20000 });
+    const $ = loadHtml(html);
 
-    try {
-      const url = `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`;
-      await gotoWithRetries(page, url, { signal });
+    const results: SearchResult[] = [];
 
-      await page.waitForSelector('a.result-link', { timeout: 15000 }).catch(() => {});
+    const primary = $('a.result-link')
+      .toArray()
+      .map((el: AnyNode) => {
+        const a = $(el);
+        const title = (a.text() || '').trim();
+        const href = (a.attr('href') || '').trim();
+        const row = a.closest('tr');
+        const snippet = (row.find('td.result-snippet').text() || '').trim();
+        return { title, url: href, snippet };
+      });
 
-      let items = await page.$$eval('a.result-link', (nodes: Element[]) =>
-        nodes.map((aEl) => {
-          const a = aEl as HTMLAnchorElement;
-          const row = a.closest('tr') as HTMLTableRowElement | null;
-          const snippetCell = row?.querySelector('td.result-snippet') as HTMLElement | null;
-          return {
-            title: (a.textContent || '').trim(),
-            url: a.href || '',
-            snippet: (snippetCell?.textContent || '').trim()
-          };
-        })
-      );
+    const items = primary.length
+      ? primary
+      : $('table a[href]')
+          .toArray()
+          .map((el: AnyNode) => {
+            const a = $(el);
+            const title = (a.text() || '').trim();
+            const href = (a.attr('href') || '').trim();
+            const row = a.closest('tr');
+            const snippet = (row.find('td.result-snippet').text() || '').trim();
+            return { title, url: href, snippet };
+          })
+          .filter((x: { title: string; url: string; snippet: string }) => x.title.length > 0 && x.url.length > 0);
 
-      if (items.length === 0) {
-        items = await page.$$eval('table a[href]', (nodes: Element[]) =>
-          nodes
-            .map((aEl) => {
-              const a = aEl as HTMLAnchorElement;
-              const row = a.closest('tr') as HTMLTableRowElement | null;
-              const snippetCell = row?.querySelector('td.result-snippet') as HTMLElement | null;
-              return {
-                title: (a.textContent || '').trim(),
-                url: a.href || '',
-                snippet: (snippetCell?.textContent || '').trim()
-              };
-            })
-            .filter((x) => x.title.length > 0 && x.url.length > 0)
-        );
-      }
-
-      const results: SearchResult[] = [];
-      for (const it of items) {
-        if (!it.title || !it.url) continue;
-        results.push({ engine: 'duckduckgo', title: it.title, url: it.url, snippet: it.snippet || undefined });
-        if (results.length >= limit) break;
-      }
-
-      await assertNotBlockedOrEmpty(page, results.length);
-      return results;
-    } finally {
-      await page.close().catch(() => {});
-      await ctx.close().catch(() => {});
+    for (const it of items) {
+      if (!it.title || !it.url) continue;
+      results.push({ engine: 'duckduckgo', title: it.title, url: it.url, snippet: it.snippet || undefined });
+      if (results.length >= limit) break;
     }
+
+    await assertNotBlockedOrEmpty({ url, html, count: results.length, status });
+    return results;
   }
 };

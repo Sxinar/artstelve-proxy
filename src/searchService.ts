@@ -105,49 +105,67 @@ export async function metaSearch(params: {
 
   type Scored = SearchResult & { _score: number; _pos: number };
 
-  const tasks = params.engines.map(async (engineId) => {
-    const engine = engineMap.get(engineId);
-    if (!engine) return [];
+  async function runEngines(engineIds: SearchEngineId[], limitPerEngine: number): Promise<Scored[]> {
+    const tasks = engineIds.map(async (engineId) => {
+      const engine = engineMap.get(engineId);
+      if (!engine) return [];
 
-    const limiter = perEngineLimit.get(engineId) ?? pLimit(1);
-    return limiter(async () => {
-      const p: EngineSearchParams = {
-        query: params.query,
-        limit: params.limitPerEngine,
-        signal: params.signal
-      };
+      const limiter = perEngineLimit.get(engineId) ?? pLimit(1);
+      return limiter(async () => {
+        const p: EngineSearchParams = {
+          query: params.query,
+          limit: limitPerEngine,
+          signal: params.signal
+        };
 
-      try {
-        const out = await engine.search(p);
-        return out.map((r, idx) => ({ ...r, _pos: idx, _score: (engineWeight[engineId] ?? 0.5) / (1 + idx) }));
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : 'engine error';
-        errors.push({ engine: engineId, message: msg });
-        return [];
-      }
+        try {
+          const out = await engine.search(p);
+          return out.map((r, idx) => ({ ...r, _pos: idx, _score: (engineWeight[engineId] ?? 0.5) / (1 + idx) }));
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'engine error';
+          errors.push({ engine: engineId, message: msg });
+          return [];
+        }
+      });
     });
-  });
 
-  const chunks = await Promise.all(tasks);
-  const scored = chunks.flat() as Scored[];
+    const chunks = await Promise.all(tasks);
+    return chunks.flat() as Scored[];
+  }
+
+  const wanted = params.engines;
+  const allByWeight = Array.from(engineMap.keys()).sort((a, b) => (engineWeight[b] ?? 0.5) - (engineWeight[a] ?? 0.5));
+  const fallbackOrder = Array.from(new Set([...wanted, ...allByWeight]));
+
+  const rounds: Array<{ engines: SearchEngineId[]; limitPerEngine: number }> = [
+    { engines: wanted, limitPerEngine: params.limitPerEngine },
+    { engines: fallbackOrder.filter((e) => !wanted.includes(e)), limitPerEngine: Math.max(params.limitPerEngine, 5) },
+    { engines: wanted, limitPerEngine: Math.min(20, Math.max(params.limitPerEngine, 8)) }
+  ];
 
   const include = parseDomainList(params.includeDomains);
   const exclude = parseDomainList(params.excludeDomains);
 
-  const filtered: Scored[] = [];
-  for (const r of scored) {
-    const host = getHostname(r.url);
-    if (!host) continue;
-    if (matchesDomain(exclude, host)) continue;
-    if (include.size > 0 && !matchesDomain(include, host)) continue;
-    filtered.push(r);
-  }
-
   const deduped = new Map<string, Scored>();
-  for (const r of filtered) {
-    const key = normalizeUrlForDedupe(r.url);
-    const prev = deduped.get(key);
-    if (!prev || r._score > prev._score) deduped.set(key, r);
+
+  for (const round of rounds) {
+    if (params.signal?.aborted) break;
+    if (!round.engines.length) continue;
+
+    const scored = await runEngines(round.engines, round.limitPerEngine);
+
+    for (const r of scored) {
+      const host = getHostname(r.url);
+      if (!host) continue;
+      if (matchesDomain(exclude, host)) continue;
+      if (include.size > 0 && !matchesDomain(include, host)) continue;
+
+      const k = normalizeUrlForDedupe(r.url);
+      const prev = deduped.get(k);
+      if (!prev || r._score > prev._score) deduped.set(k, r);
+    }
+
+    if (deduped.size >= limitTotal) break;
   }
 
   const results = Array.from(deduped.values())

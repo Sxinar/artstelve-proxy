@@ -9,15 +9,14 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "node --enable-source-maps dist/server.js",
-    "build": "tsc -p tsconfig.json",
-    "postinstall": "cross-env PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium"
+    "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.19.2",
+    "cheerio": "^1.0.0-rc.12",
     "lru-cache": "^10.2.2",
-    "p-limit": "^6.1.0",
-    "playwright": "^1.49.1"
+    "p-limit": "^6.1.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
