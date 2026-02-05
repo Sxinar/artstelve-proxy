@@ -1,0 +1,12 @@
+name: Stoat Notification
+on: [push]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Webhook
+        run: |
+          curl -X POST https://stoat.chat/api/webhooks/01KGQ0D3T3FW9EDDFD21EQZVHP/jnEjItkmdDBM_XynlZsJxQbZ-Y9Wd0Hyt3e-8KH-TQoariGhWPgYrw-_GAfY4uZH/ \
+          -H "Content-Type: application/json" \
+          -d "{\"content\": \"🚀 **Yeni Push!**\n**Repo:** ${{ github.repository }}\n**Mesaj:** ${{ github.event.head_commit.message }}\n**Yapan:** ${{ github.actor }}\"}"
