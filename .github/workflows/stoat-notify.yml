@@ -1,12 +1,31 @@
-name: Stoat Notification
-on: [push]
+name: Stoat Advanced Notification
+on: [push, pull_request, issues]
 
 jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
-      - name: Send Webhook
+      - name: Build Notification Content
+        id: build_content
+        run: |
+          # Mesaj içeriğini hazırlayalım
+          REPO="${{ github.repository }}"
+          ACTOR="${{ github.actor }}"
+          EVENT="${{ github.event_name }}"
+          
+          if [ "$EVENT" == "push" ]; then
+            MSG="🚀 **Yeni Push!**\n👤 **Yapan:** $ACTOR\n📝 **Mesaj:** ${{ github.event.head_commit.message }}\n🔗 [Commit'i Gör](https://github.com/$REPO/commit/${{ github.sha }})"
+          elif [ "$EVENT" == "pull_request" ]; then
+            MSG="🔀 **Pull Request:** ${{ github.event.pull_request.title }}\n👤 **Yapan:** $ACTOR\n🔗 [PR'ı Gör](${{ github.event.pull_request.html_url }})"
+          else
+            MSG="🔔 **GitHub Etkinliği:** $EVENT\n👤 **Yapan:** $ACTOR\n📍 **Repo:** $REPO"
+          fi
+          
+          # Mesajı bir değişkene aktaralım
+          echo "payload={\"content\": \"$MSG\"}" >> $GITHUB_OUTPUT
+
+      - name: Send to Stoat
         run: |
           curl -X POST https://stoat.chat/api/webhooks/01KGQ0D3T3FW9EDDFD21EQZVHP/jnEjItkmdDBM_XynlZsJxQbZ-Y9Wd0Hyt3e-8KH-TQoariGhWPgYrw-_GAfY4uZH/ \
           -H "Content-Type: application/json" \
-          -d "{\"content\": \"🚀 **Yeni Push!**\n**Repo:** ${{ github.repository }}\n**Mesaj:** ${{ github.event.head_commit.message }}\n**Yapan:** ${{ github.actor }}\"}"
+          -d '${{ steps.build_content.outputs.payload }}'
