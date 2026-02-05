@@ -1,22 +1,40 @@
-name: Stoat Notification
-on: [push, pull_request, issues]
+name: Stoat Proxy Ultimate Notifier
+on:
+  push:
+  pull_request:
+    types: [opened, closed]
+  watch:
+    types: [started]
+  fork:
+  issues:
+    types: [opened]
 
 jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
-      - name: Send Notification
+      - name: Build and Send Notification
         run: |
-          # Mesajı parça parça oluşturalım ki hata çıkmasın
-          REPO="${{ github.repository }}"
-          USER="${{ github.actor }}"
           EVENT="${{ github.event_name }}"
-          SHA="${{ github.sha }}"
-          
-          # İçeriği tek bir satırda toplayalım
-          MSG="🚀 **Yeni Push!**\n👤 **Yapan:** $USER\n📝 **Repo:** $REPO\n🔗 [Commit Detayları](https://github.com/$REPO/commit/$SHA)"
+          USER="${{ github.actor }}"
+          REPO="${{ github.repository }}"
+          URL="https://github.com/$REPO"
 
-          # CURL ile gönderelim
+          if [ "$EVENT" == "watch" ]; then
+            MSG="⭐ **Yeni Star!**\n👤 **Kullanıcı:** $USER\n✨ Proxy reposu parlıyor!"
+          elif [ "$EVENT" == "fork" ]; then
+            MSG="🍴 **Repo Forklandı!**\n👤 **Kullanıcı:** $USER\n📦 Proxy'nin bir kopyası alındı."
+          elif [ "$EVENT" == "push" ]; then
+            MSG="🚀 **Yeni Push!**\n👤 **Yapan:** $USER\n📝 **Mesaj:** ${{ github.event.head_commit.message }}\n🔗 [Commit'i Gör]($URL/commit/${{ github.sha }})"
+          elif [ "$EVENT" == "pull_request" ]; then
+            MSG="🔀 **Pull Request:** ${{ github.event.pull_request.title }}\n👤 **Durum:** ${{ github.event.action }}\n🔗 [PR Detay](${{ github.event.pull_request.html_url }})"
+          elif [ "$EVENT" == "issues" ]; then
+            MSG="📢 **Yeni Issue Açıldı!**\n👤 **Açan:** $USER\n📌 **Başlık:** ${{ github.event.issue.title }}\n🔗 [İncele](${{ github.event.issue.html_url }})"
+          else
+            MSG="🔔 **GitHub Etkinliği:** $EVENT\n👤 **Yapan:** $USER\n📍 **Repo:** $REPO"
+          fi
+
+          # Proxy Kanalı Webhook Linkin:
           curl -X POST https://stoat.chat/api/webhooks/01KGQ0D3T3FW9EDDFD21EQZVHP/jnEjItkmdDBM_XynlZsJxQbZ-Y9Wd0Hyt3e-8KH-TQoariGhWPgYrw-_GAfY4uZH/ \
           -H "Content-Type: application/json" \
           -d "{\"content\": \"$MSG\"}"
