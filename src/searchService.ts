@@ -7,19 +7,6 @@ import { engines } from './engines/index.js';
 const engineMap = new Map<SearchEngineId, Engine>(engines.map((e) => [e.id, e]));
 const defaultEngines: SearchEngineId[] = engines.map((e) => e.id);
 
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) return reject(new Error('aborted'));
-    const t = setTimeout(resolve, ms);
-    if (signal) {
-      signal.addEventListener('abort', () => {
-        clearTimeout(t);
-        reject(new Error('aborted'));
-      }, { once: true });
-    }
-  });
-}
-
 function parseDomainList(raw?: string): Set<string> {
   if (!raw) return new Set();
   const parts = raw
@@ -53,9 +40,7 @@ function isSearchEngineHost(host: string): boolean {
     host === 'search.brave.com' ||
     host.endsWith('.search.brave.com') ||
     host === 'startpage.com' ||
-    host.endsWith('.startpage.com') ||
-    host === 'marginalia.nu' ||
-    host.endsWith('.marginalia.nu')
+    host.endsWith('.startpage.com')
   );
 }
 
@@ -117,6 +102,19 @@ function cleanResultUrl(rawUrl: string): string {
       }
     }
 
+    // AOL click redirect: /click;_ylt=...?...&u=<target>
+    if ((host === 'search.aol.com' || host.endsWith('.search.aol.com')) && u.pathname.toLowerCase().includes('click')) {
+      const target = u.searchParams.get('u') || u.searchParams.get('url') || '';
+      if (target) {
+        try {
+          const decoded = decodeURIComponent(target);
+          if (decoded.startsWith('http://') || decoded.startsWith('https://')) return decoded;
+        } catch {
+          if (target.startsWith('http://') || target.startsWith('https://')) return target;
+        }
+      }
+    }
+
     return u.toString();
   } catch {
     return '';
@@ -157,8 +155,8 @@ const engineWeight: Record<SearchEngineId, number> = {
   ecosia: 0.8,
   mojeek: 0.75,
   yahoo: 0.7,
-  ask: 0.5,
-  marginalia: 0.75
+  ask: 0.6,
+  marginalia: 0.4
 };
 
 const cache = new LRUCache<string, { results: SearchResult[]; errors: EngineError[] }>({
@@ -176,6 +174,20 @@ const perEngineLimit = new Map<SearchEngineId, ReturnType<typeof pLimit>>(
 const blockedUntil = new Map<SearchEngineId, number>();
 const blockedCooldownMs = Math.max(30_000, Math.min(30 * 60_000, Number(process.env.BLOCKED_ENGINE_COOLDOWN_MS ?? 10 * 60_000)));
 
+export type EngineHealth = {
+  totalRequests: number;
+  totalErrors: number;
+  lastSuccess?: string;
+  lastError?: string;
+  lastErrorMessage?: string;
+};
+
+const engineHealth = new Map<SearchEngineId, EngineHealth>();
+
+export function getEngineHealth(): Record<string, EngineHealth> {
+  return Object.fromEntries(engineHealth.entries());
+}
+
 export function parseEnginesParam(raw?: string): SearchEngineId[] {
   if (!raw) return defaultEngines;
   const parts = raw
@@ -185,26 +197,6 @@ export function parseEnginesParam(raw?: string): SearchEngineId[] {
 
   const uniq = Array.from(new Set(parts));
   return uniq.filter((id) => engineMap.has(id));
-}
-
-export interface EngineHealth {
-  lastSuccess?: string;
-  lastError?: string;
-  lastErrorMessage?: string;
-  totalRequests: number;
-  totalErrors: number;
-}
-
-const engineHealthMap = new Map<SearchEngineId, EngineHealth>(
-  engines.map((e) => [e.id, { totalRequests: 0, totalErrors: 0 }])
-);
-
-export function getEngineHealth(): Record<SearchEngineId, EngineHealth> {
-  const result: Record<string, EngineHealth> = {};
-  for (const [id, health] of engineHealthMap.entries()) {
-    result[id] = health;
-  }
-  return result;
 }
 
 export async function metaSearch(params: {
@@ -232,7 +224,7 @@ export async function metaSearch(params: {
 
   type Scored = SearchResult & { _score: number; _pos: number };
 
-  async function runEngines(engineIds: SearchEngineId[], limitPerEngine: number, pageno: number): Promise<Scored[]> {
+  async function runEngines(engineIds: SearchEngineId[], limitPerEngine: number): Promise<Scored[]> {
     const tasks = engineIds.map(async (engineId) => {
       const engine = engineMap.get(engineId);
       if (!engine) return [];
@@ -249,22 +241,15 @@ export async function metaSearch(params: {
           query: params.query,
           limit: limitPerEngine,
           signal: params.signal,
-          region: params.region
+          region: params.region,
+          pageno
         };
-
-        const health = engineHealthMap.get(engineId)!;
-        health.totalRequests++;
 
         try {
           const out = await engine.search(p);
-          health.lastSuccess = new Date().toISOString();
           return out.map((r, idx) => ({ ...r, _pos: idx, _score: (engineWeight[engineId] ?? 0.5) / (1 + idx) }));
         } catch (e) {
           const msg = e instanceof Error ? e.message : 'engine error';
-          health.totalErrors++;
-          health.lastError = new Date().toISOString();
-          health.lastErrorMessage = msg;
-
           if (msg.startsWith('blocked_or_captcha')) {
             blockedUntil.set(engineId, Date.now() + blockedCooldownMs);
           }
@@ -322,7 +307,7 @@ export async function metaSearch(params: {
 
   for (const q of quotas) {
     if (params.signal?.aborted) break;
-    const scored = await runEngines([q.engine], Math.max(1, Math.min(30, q.limit)), pageno);
+    const scored = await runEngines([q.engine], Math.max(1, Math.min(30, q.limit)));
 
     for (const r0 of scored) {
       const cleanedUrl = cleanResultUrl(r0.url);
@@ -361,7 +346,7 @@ export async function metaSearch(params: {
       if (params.signal?.aborted) break;
       if (deduped.size >= totalTarget) break;
 
-      const scored = await runEngines([e], 10, pageno);
+      const scored = await runEngines([e], 10);
       for (const r0 of scored) {
         const cleanedUrl = cleanResultUrl(r0.url);
         if (!cleanedUrl) continue;
