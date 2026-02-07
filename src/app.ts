@@ -520,6 +520,7 @@ app.get('/search', async (req: Request, res: Response) => {
   const limitTotal = Math.max(1, Math.min(100, Number(req.query.limitTotal ?? 20)));
   const limitPerEngine = Math.max(1, Math.min(20, Number(req.query.limitPerEngine ?? 5)));
   const useCache = !(String(req.query.cache ?? '1') === '0');
+  const region = typeof req.query.region === 'string' ? req.query.region.trim() : undefined;
   const includeDomains = typeof req.query.includeDomains === 'string' ? req.query.includeDomains : undefined;
   const excludeDomains = typeof req.query.excludeDomains === 'string' ? req.query.excludeDomains : undefined;
 
@@ -541,7 +542,8 @@ app.get('/search', async (req: Request, res: Response) => {
       includeDomains,
       excludeDomains,
       useCache,
-      signal: controller.signal
+      signal: controller.signal,
+      region
     });
     res.json({
       query: q,

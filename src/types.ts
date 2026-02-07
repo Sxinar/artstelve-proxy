@@ -1,6 +1,8 @@
 export type SearchEngineId =
   | 'duckduckgo'
   | 'google'
+  | 'bing'
+  | 'yandex'
   | 'yahoo'
   | 'brave'
   | 'startpage'
@@ -12,6 +14,7 @@ export type SearchEngineId =
 
 export type SearchResult = {
   engine: SearchEngineId;
+  sources?: SearchEngineId[];
   title: string;
   url: string;
   snippet?: string;

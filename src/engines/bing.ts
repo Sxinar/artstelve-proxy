@@ -12,12 +12,11 @@ async function assertNotBlockedOrEmpty(params: { url: string; html: string; coun
     'unusual traffic',
     'verify',
     'robot',
-    'consent',
-    'blocked',
     'access denied',
+    'blocked',
     'enable javascript',
-    'cloudflare',
-    'attention required'
+    'attention required',
+    'are you a robot'
   ];
   const isBlocked = blockedHints.some((h) => hay.includes(h));
   const snippet = params.html.replace(/\s+/g, ' ').slice(0, 220);
@@ -30,27 +29,36 @@ async function assertNotBlockedOrEmpty(params: { url: string; html: string; coun
   );
 }
 
-export const yandex: Engine = {
-  id: 'yandex',
+export const bing: Engine = {
+  id: 'bing',
   async search({ query, limit, signal, region }) {
     const r = (region || '').toUpperCase();
-    const base = r === 'TR' ? 'https://yandex.com.tr' : 'https://yandex.com';
-    const reqUrl = `${base}/search/?text=${encodeURIComponent(query)}`;
-    const { html, url, status } = await fetchHtml(reqUrl, { signal, timeoutMs: 20000 });
+    const cc = r && r !== 'ALL' ? r : '';
+    const setlang = cc === 'TR' ? 'tr-tr' : cc === 'US' ? 'en-us' : '';
+    const qs = new URLSearchParams();
+    qs.set('q', query);
+    if (cc) qs.set('cc', cc);
+    if (setlang) qs.set('setlang', setlang);
+    const reqUrl = `https://www.bing.com/search?${qs.toString()}`;
+    const { html, url, status } = await fetchHtml(reqUrl, {
+      signal,
+      timeoutMs: 20000,
+      headers: {
+        'accept-language': cc === 'TR' ? 'tr-TR,tr;q=0.9,en;q=0.6' : 'en-US,en;q=0.9'
+      }
+    });
     const $ = loadHtml(html);
 
     const results: SearchResult[] = [];
-    const nodes = $('li.serp-item, div.serp-item').toArray();
+    const nodes = $('li.b_algo').toArray();
     for (const el of nodes) {
       const n = $(el as AnyNode);
-      const a = n.find('a.Link[href]').first();
-      const titleEl = n.find('h2').first();
-      const title = ((titleEl.text() || a.text()) || '').trim();
-      const hrefRaw = (a.attr('href') || '').trim();
-      const href = hrefRaw ? new URL(hrefRaw, url).toString() : '';
-      const snippet = (n.find('.OrganicTextContentSpan, .text-container').first().text() || '').trim();
+      const a = n.find('h2 a[href]').first();
+      const title = (a.text() || '').trim();
+      const href = (a.attr('href') || '').trim();
+      const snippet = (n.find('.b_caption p').first().text() || '').trim();
       if (!title || !href) continue;
-      results.push({ engine: 'yandex', title, url: href, snippet: snippet || undefined });
+      results.push({ engine: 'bing', title, url: href, snippet: snippet || undefined });
       if (results.length >= limit) break;
     }
 

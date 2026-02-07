@@ -4,6 +4,7 @@ export type EngineSearchParams = {
   query: string;
   limit: number;
   signal?: AbortSignal;
+  region?: string;
 };
 
 export type Engine = {

@@ -14,5 +14,5 @@
     "sourceMap": true
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/engines/yandex.ts"]
+  "exclude": []
 }
