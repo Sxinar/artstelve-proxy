@@ -2,12 +2,13 @@ import type { ImageResult } from '../types.js';
 
 export interface ImageEngine {
   id: string;
-  search(params: { query: string; limit: number; signal?: AbortSignal }): Promise<ImageResult[]>;
+  search(params: { query: string; limit: number; pageno?: number; signal?: AbortSignal }): Promise<ImageResult[]>;
 }
 
 async function trySerperImages(params: {
   query: string;
   limit: number;
+  pageno?: number;
   signal?: AbortSignal;
 }): Promise<ImageResult[]> {
   const key = process.env.SERPER_API_KEY;
@@ -24,7 +25,7 @@ async function trySerperImages(params: {
       'content-type': 'application/json',
       'x-api-key': key
     },
-    body: JSON.stringify({ q: params.query, num }),
+    body: JSON.stringify({ q: params.query, num, page: params.pageno || 1 }),
     signal: controller.signal
   });
   clearTimeout(t);
@@ -32,15 +33,15 @@ async function trySerperImages(params: {
   const json = (await res.json().catch(() => null)) as
     | null
     | {
-        images?: Array<{
-          title?: string;
-          imageUrl?: string;
-          thumbnailUrl?: string;
-          imageWidth?: number;
-          imageHeight?: number;
-          source?: string;
-        }>;
-      };
+      images?: Array<{
+        title?: string;
+        imageUrl?: string;
+        thumbnailUrl?: string;
+        imageWidth?: number;
+        imageHeight?: number;
+        source?: string;
+      }>;
+    };
 
   const images = json?.images ?? [];
   const out: ImageResult[] = [];
@@ -70,8 +71,8 @@ async function trySerperImages(params: {
 
 export const googleImages: ImageEngine = {
   id: 'google-images',
-  async search({ query, limit, signal }) {
-    const results = await trySerperImages({ query, limit, signal });
+  async search({ query, limit, pageno, signal }) {
+    const results = await trySerperImages({ query, limit, pageno, signal });
     if (results.length === 0) {
       throw new Error('no_results_or_serper_api_error');
     }

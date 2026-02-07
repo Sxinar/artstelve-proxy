@@ -2,12 +2,13 @@ import type { VideoResult } from '../types.js';
 
 export interface VideoEngine {
     id: string;
-    search(params: { query: string; limit: number; signal?: AbortSignal }): Promise<VideoResult[]>;
+    search(params: { query: string; limit: number; pageno?: number; signal?: AbortSignal }): Promise<VideoResult[]>;
 }
 
 async function trySerperVideos(params: {
     query: string;
     limit: number;
+    pageno?: number;
     signal?: AbortSignal;
 }): Promise<VideoResult[]> {
     const key = process.env.SERPER_API_KEY;
@@ -24,7 +25,7 @@ async function trySerperVideos(params: {
             'content-type': 'application/json',
             'x-api-key': key
         },
-        body: JSON.stringify({ q: params.query, num }),
+        body: JSON.stringify({ q: params.query, num, page: params.pageno || 1 }),
         signal: controller.signal
     });
     clearTimeout(t);
@@ -70,8 +71,8 @@ async function trySerperVideos(params: {
 
 export const googleVideos: VideoEngine = {
     id: 'google-videos',
-    async search({ query, limit, signal }) {
-        const results = await trySerperVideos({ query, limit, signal });
+    async search({ query, limit, pageno, signal }) {
+        const results = await trySerperVideos({ query, limit, pageno, signal });
         if (results.length === 0) {
             throw new Error('no_results_or_serper_api_error');
         }

@@ -14,9 +14,11 @@ export async function videoSearch(params: {
     limitTotal?: number;
     useCache?: boolean;
     signal?: AbortSignal;
+    pageno?: number;
 }): Promise<{ results: VideoResult[] }> {
     const limitTotal = Math.max(1, Math.min(100, params.limitTotal ?? 30));
-    const key = `videos::${params.query}::${limitTotal}`;
+    const pageno = Math.max(1, params.pageno ?? 1);
+    const key = `videos://${params.query}::${limitTotal}::${pageno}`;
     const useCache = params.useCache ?? true;
 
     if (useCache) {
@@ -33,7 +35,8 @@ export async function videoSearch(params: {
             const engineResults = await engine.search({
                 query: params.query,
                 limit: limitTotal,
-                signal: params.signal
+                signal: params.signal,
+                pageno
             });
             results.push(...engineResults);
         } catch (e) {

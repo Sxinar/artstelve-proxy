@@ -4,9 +4,10 @@ import { fetchHtml } from '../http/fetchHtml.js';
 
 export const marginalia: Engine = {
     id: 'marginalia',
-    async search({ query, limit, signal }) {
+    async search({ query, limit, pageno, signal }) {
         // Using the public API as it is more reliable than scraping which is often blocked by Anubis (PoW)
-        const reqUrl = `https://api2.marginalia-search.com/search?query=${encodeURIComponent(query)}`;
+        const p = pageno && pageno > 1 ? pageno - 1 : 0;
+        const reqUrl = `https://api2.marginalia-search.com/search?query=${encodeURIComponent(query)}${p ? `&page=${p}` : ''}`;
 
         try {
             const { html } = await fetchHtml(reqUrl, {

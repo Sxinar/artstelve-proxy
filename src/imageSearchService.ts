@@ -14,9 +14,11 @@ export async function imageSearch(params: {
     limitTotal?: number;
     useCache?: boolean;
     signal?: AbortSignal;
+    pageno?: number;
 }): Promise<{ results: ImageResult[] }> {
     const limitTotal = Math.max(1, Math.min(200, params.limitTotal ?? 50));
-    const key = `images::${params.query}::${limitTotal}`;
+    const pageno = Math.max(1, params.pageno ?? 1);
+    const key = `images://${params.query}::${limitTotal}::${pageno}`;
     const useCache = params.useCache ?? true;
 
     if (useCache) {
@@ -33,7 +35,8 @@ export async function imageSearch(params: {
             const engineResults = await engine.search({
                 query: params.query,
                 limit: limitTotal,
-                signal: params.signal
+                signal: params.signal,
+                pageno
             });
             results.push(...engineResults);
         } catch (e) {

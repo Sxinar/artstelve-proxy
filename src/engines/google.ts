@@ -33,6 +33,7 @@ async function assertNotBlockedOrEmpty(params: { url: string; html: string; coun
 async function trySerper(params: {
   query: string;
   limit: number;
+  pageno?: number;
   signal?: AbortSignal;
 }): Promise<SearchResult[] | null> {
   const key = process.env.SERPER_API_KEY;
@@ -48,7 +49,7 @@ async function trySerper(params: {
       'content-type': 'application/json',
       'x-api-key': key
     },
-    body: JSON.stringify({ q: params.query, num }),
+    body: JSON.stringify({ q: params.query, num, page: params.pageno || 1 }),
     signal: controller.signal
   });
   clearTimeout(t);
@@ -56,8 +57,8 @@ async function trySerper(params: {
   const json = (await res.json().catch(() => null)) as
     | null
     | {
-        organic?: Array<{ title?: string; link?: string; snippet?: string }>;
-      };
+      organic?: Array<{ title?: string; link?: string; snippet?: string }>;
+    };
 
   const organic = json?.organic ?? [];
   const out: SearchResult[] = [];
@@ -101,8 +102,8 @@ function isProbablyResultUrl(url: string): boolean {
 
 export const google: Engine = {
   id: 'google',
-  async search({ query, limit, signal }) {
-    const results = await trySerper({ query, limit, signal });
+  async search({ query, limit, pageno, signal }) {
+    const results = await trySerper({ query, limit, pageno, signal });
     if (!results || results.length === 0) {
       throw new Error('no_results_or_serper_api_error');
     }

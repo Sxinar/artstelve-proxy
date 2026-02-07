@@ -32,10 +32,11 @@ async function assertNotBlockedOrEmpty(params: { url: string; html: string; coun
 
 export const yandex: Engine = {
   id: 'yandex',
-  async search({ query, limit, signal, region }) {
+  async search({ query, limit, pageno, signal, region }) {
     const r = (region || '').toUpperCase();
     const base = r === 'TR' ? 'https://yandex.com.tr' : 'https://yandex.com';
-    const reqUrl = `${base}/search/?text=${encodeURIComponent(query)}`;
+    const p = pageno && pageno > 1 ? pageno - 1 : 0;
+    const reqUrl = `${base}/search/?text=${encodeURIComponent(query)}${p ? `&p=${p}` : ''}`;
     const { html, url, status } = await fetchHtml(reqUrl, { signal, timeoutMs: 20000 });
     const $ = loadHtml(html);
 

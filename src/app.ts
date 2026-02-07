@@ -517,6 +517,13 @@ app.get('/search', async (req: Request, res: Response) => {
   const includeDomains = typeof req.query.includeDomains === 'string' ? req.query.includeDomains : undefined;
   const excludeDomains = typeof req.query.excludeDomains === 'string' ? req.query.excludeDomains : undefined;
 
+  let pageno = Number(req.query.pageno ?? 1);
+  const offset = Number(req.query.offset);
+  if (!isNaN(offset) && req.query.offset !== undefined) {
+    pageno = offset + 1;
+  }
+  pageno = Math.max(1, pageno);
+
   if (!q) {
     res.status(400).json({ error: 'missing q' });
     return;
@@ -536,13 +543,15 @@ app.get('/search', async (req: Request, res: Response) => {
       excludeDomains,
       useCache,
       signal: controller.signal,
-      region
+      region,
+      pageno
     });
     res.json({
       query: q,
       engines,
       limitTotal,
       limitPerEngine,
+      pageno,
       count: results.length,
       results,
       errors
@@ -556,6 +565,13 @@ app.get('/search/images', async (req: Request, res: Response) => {
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
   const limitTotal = Math.max(1, Math.min(200, Number(req.query.limitTotal ?? 50)));
   const useCache = !(String(req.query.cache ?? '1') === '0');
+
+  let pageno = Number(req.query.pageno ?? 1);
+  const offset = Number(req.query.offset);
+  if (!isNaN(offset) && req.query.offset !== undefined) {
+    pageno = offset + 1;
+  }
+  pageno = Math.max(1, pageno);
 
   if (!q) {
     res.status(400).json({ error: 'missing q' });
@@ -571,10 +587,12 @@ app.get('/search/images', async (req: Request, res: Response) => {
       query: q,
       limitTotal,
       useCache,
-      signal: controller.signal
+      signal: controller.signal,
+      pageno
     });
     res.json({
       query: q,
+      pageno,
       count: results.length,
       results
     });
@@ -587,6 +605,13 @@ app.get('/search/videos', async (req: Request, res: Response) => {
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
   const limitTotal = Math.max(1, Math.min(100, Number(req.query.limitTotal ?? 30)));
   const useCache = !(String(req.query.cache ?? '1') === '0');
+
+  let pageno = Number(req.query.pageno ?? 1);
+  const offset = Number(req.query.offset);
+  if (!isNaN(offset) && req.query.offset !== undefined) {
+    pageno = offset + 1;
+  }
+  pageno = Math.max(1, pageno);
 
   if (!q) {
     res.status(400).json({ error: 'missing q' });
@@ -602,10 +627,12 @@ app.get('/search/videos', async (req: Request, res: Response) => {
       query: q,
       limitTotal,
       useCache,
-      signal: controller.signal
+      signal: controller.signal,
+      pageno
     });
     res.json({
       query: q,
+      pageno,
       count: results.length,
       results
     });
@@ -618,6 +645,13 @@ app.get('/search/news', async (req: Request, res: Response) => {
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
   const limitTotal = Math.max(1, Math.min(100, Number(req.query.limitTotal ?? 30)));
   const useCache = !(String(req.query.cache ?? '1') === '0');
+
+  let pageno = Number(req.query.pageno ?? 1);
+  const offset = Number(req.query.offset);
+  if (!isNaN(offset) && req.query.offset !== undefined) {
+    pageno = offset + 1;
+  }
+  pageno = Math.max(1, pageno);
 
   if (!q) {
     res.status(400).json({ error: 'missing q' });
@@ -633,10 +667,12 @@ app.get('/search/news', async (req: Request, res: Response) => {
       query: q,
       limitTotal,
       useCache,
-      signal: controller.signal
+      signal: controller.signal,
+      pageno
     });
     res.json({
       query: q,
+      pageno,
       count: results.length,
       results
     });

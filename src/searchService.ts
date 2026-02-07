@@ -217,9 +217,11 @@ export async function metaSearch(params: {
   useCache?: boolean;
   signal?: AbortSignal;
   region?: string;
+  pageno?: number;
 }): Promise<{ results: SearchResult[]; errors: EngineError[] }> {
   const limitTotal = Math.max(1, Math.min(200, params.limitTotal ?? 25));
-  const key = `${params.query}::${params.engines.join(',')}::${params.limitPerEngine}::${limitTotal}::${params.includeDomains ?? ''}::${params.excludeDomains ?? ''}::${params.region ?? ''}`;
+  const pageno = Math.max(1, params.pageno ?? 1);
+  const key = `${params.query}::${params.engines.join(',')}::${params.limitPerEngine}::${limitTotal}::${params.includeDomains ?? ''}::${params.excludeDomains ?? ''}::${params.region ?? ''}::${pageno}`;
   const useCache = params.useCache ?? true;
   if (useCache) {
     const cached = cache.get(key);
@@ -230,7 +232,7 @@ export async function metaSearch(params: {
 
   type Scored = SearchResult & { _score: number; _pos: number };
 
-  async function runEngines(engineIds: SearchEngineId[], limitPerEngine: number): Promise<Scored[]> {
+  async function runEngines(engineIds: SearchEngineId[], limitPerEngine: number, pageno: number): Promise<Scored[]> {
     const tasks = engineIds.map(async (engineId) => {
       const engine = engineMap.get(engineId);
       if (!engine) return [];
@@ -320,7 +322,7 @@ export async function metaSearch(params: {
 
   for (const q of quotas) {
     if (params.signal?.aborted) break;
-    const scored = await runEngines([q.engine], Math.max(1, Math.min(30, q.limit)));
+    const scored = await runEngines([q.engine], Math.max(1, Math.min(30, q.limit)), pageno);
 
     for (const r0 of scored) {
       const cleanedUrl = cleanResultUrl(r0.url);
@@ -359,7 +361,7 @@ export async function metaSearch(params: {
       if (params.signal?.aborted) break;
       if (deduped.size >= totalTarget) break;
 
-      const scored = await runEngines([e], 10);
+      const scored = await runEngines([e], 10, pageno);
       for (const r0 of scored) {
         const cleanedUrl = cleanResultUrl(r0.url);
         if (!cleanedUrl) continue;

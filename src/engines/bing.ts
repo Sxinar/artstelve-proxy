@@ -31,7 +31,7 @@ async function assertNotBlockedOrEmpty(params: { url: string; html: string; coun
 
 export const bing: Engine = {
   id: 'bing',
-  async search({ query, limit, signal, region }) {
+  async search({ query, limit, pageno, signal, region }) {
     const r = (region || '').toUpperCase();
     const cc = r && r !== 'ALL' ? r : '';
     const setlang = cc === 'TR' ? 'tr-tr' : cc === 'US' ? 'en-us' : '';
@@ -39,6 +39,9 @@ export const bing: Engine = {
     qs.set('q', query);
     if (cc) qs.set('cc', cc);
     if (setlang) qs.set('setlang', setlang);
+    if (pageno && pageno > 1) {
+      qs.set('first', String((pageno - 1) * 10 + 1));
+    }
     const reqUrl = `https://www.bing.com/search?${qs.toString()}`;
     const { html, url, status } = await fetchHtml(reqUrl, {
       signal,

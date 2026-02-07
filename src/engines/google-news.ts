@@ -2,12 +2,13 @@ import type { NewsResult } from '../types.js';
 
 export interface NewsEngine {
     id: string;
-    search(params: { query: string; limit: number; signal?: AbortSignal }): Promise<NewsResult[]>;
+    search(params: { query: string; limit: number; pageno?: number; signal?: AbortSignal }): Promise<NewsResult[]>;
 }
 
 async function trySerperNews(params: {
     query: string;
     limit: number;
+    pageno?: number;
     signal?: AbortSignal;
 }): Promise<NewsResult[]> {
     const key = process.env.SERPER_API_KEY;
@@ -24,7 +25,7 @@ async function trySerperNews(params: {
             'content-type': 'application/json',
             'x-api-key': key
         },
-        body: JSON.stringify({ q: params.query, num }),
+        body: JSON.stringify({ q: params.query, num, page: params.pageno || 1 }),
         signal: controller.signal
     });
     clearTimeout(t);
@@ -70,8 +71,8 @@ async function trySerperNews(params: {
 
 export const googleNews: NewsEngine = {
     id: 'google-news',
-    async search({ query, limit, signal }) {
-        const results = await trySerperNews({ query, limit, signal });
+    async search({ query, limit, pageno, signal }) {
+        const results = await trySerperNews({ query, limit, pageno, signal });
         if (results.length === 0) {
             throw new Error('no_results_or_serper_api_error');
         }
