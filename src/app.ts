@@ -517,7 +517,7 @@ app.get('/health', (_req: Request, res: Response) => {
 app.get('/search', async (req: Request, res: Response) => {
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
   const engines = parseEnginesParam(typeof req.query.engines === 'string' ? req.query.engines : undefined);
-  const limitTotal = Math.max(1, Math.min(100, Number(req.query.limitTotal ?? 20)));
+  const limitTotal = Math.max(1, Math.min(200, Number(req.query.limitTotal ?? 20)));
   const limitPerEngine = Math.max(1, Math.min(20, Number(req.query.limitPerEngine ?? 5)));
   const useCache = !(String(req.query.cache ?? '1') === '0');
   const region = typeof req.query.region === 'string' ? req.query.region.trim() : undefined;

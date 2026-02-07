@@ -88,6 +88,31 @@ function cleanResultUrl(rawUrl: string): string {
           if (ru.startsWith('http://') || ru.startsWith('https://')) return ru;
         }
       }
+
+      // Some variants put RU in the path: .../RU=<encoded>/RK=.../RS=...
+      const m = u.pathname.match(/\/RU=([^/]+)/i);
+      if (m && m[1]) {
+        const ruPath = m[1];
+        try {
+          const decoded = decodeURIComponent(ruPath);
+          if (decoded.startsWith('http://') || decoded.startsWith('https://')) return decoded;
+        } catch {
+          if (ruPath.startsWith('http://') || ruPath.startsWith('https://')) return ruPath;
+        }
+      }
+    }
+
+    // AOL click redirect: /click;_ylt=...?...&u=<target>
+    if ((host === 'search.aol.com' || host.endsWith('.search.aol.com')) && u.pathname.toLowerCase().includes('click')) {
+      const target = u.searchParams.get('u') || u.searchParams.get('url') || '';
+      if (target) {
+        try {
+          const decoded = decodeURIComponent(target);
+          if (decoded.startsWith('http://') || decoded.startsWith('https://')) return decoded;
+        } catch {
+          if (target.startsWith('http://') || target.startsWith('https://')) return target;
+        }
+      }
     }
 
     return u.toString();
@@ -171,7 +196,7 @@ export async function metaSearch(params: {
   signal?: AbortSignal;
   region?: string;
 }): Promise<{ results: SearchResult[]; errors: EngineError[] }> {
-  const limitTotal = Math.max(1, Math.min(100, params.limitTotal ?? 25));
+  const limitTotal = Math.max(1, Math.min(200, params.limitTotal ?? 25));
   const key = `${params.query}::${params.engines.join(',')}::${params.limitPerEngine}::${limitTotal}::${params.includeDomains ?? ''}::${params.excludeDomains ?? ''}::${params.region ?? ''}`;
   const useCache = params.useCache ?? true;
   if (useCache) {
