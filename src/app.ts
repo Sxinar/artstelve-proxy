@@ -1,7 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
-import { metaSearch, parseEnginesParam } from './searchService.js';
+import { metaSearch, parseEnginesParam, getEngineHealth } from './searchService.js';
+import type { EngineHealth } from './searchService.js';
 import { engines } from './engines/index.js';
 import { imageSearch } from './imageSearchService.js';
 import { videoSearch } from './videoSearchService.js';
@@ -22,106 +23,68 @@ app.get('/images', (_req: Request, res: Response) => {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>🖼️ Görsel Arama Testi</title>
     <style>
-      * { box-sizing: border-box; }
-      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; margin: 0; background: linear-gradient(135deg, #0a0e1a 0%, #1a1f35 100%); color: #e8eefc; min-height: 100vh; }
-      header { padding: 24px 32px; border-bottom: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.02); backdrop-filter: blur(10px); }
-      h1 { margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px; background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-      .sub { margin-top: 8px; color: rgba(232,238,252,0.6); font-size: 14px; }
-      .sub a { color: #60a5fa; text-decoration: none; transition: color 0.2s; }
-      .sub a:hover { color: #93c5fd; text-decoration: underline; }
-      main { padding: 24px 32px; max-width: 1400px; margin: 0 auto; }
-      .controls { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 24px; margin-bottom: 24px; }
-      .control-row { display: grid; grid-template-columns: 1fr 200px; gap: 16px; margin-bottom: 16px; }
-      @media (max-width: 768px) { .control-row { grid-template-columns: 1fr; } }
-      label { display: block; font-size: 13px; font-weight: 600; color: rgba(232,238,252,0.8); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
-      input { border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.3); color: #e8eefc; padding: 12px 16px; border-radius: 10px; width: 100%; font-size: 15px; transition: all 0.2s; }
-      input:focus { outline: none; border-color: #60a5fa; background: rgba(0,0,0,0.4); box-shadow: 0 0 0 3px rgba(96,165,250,0.1); }
-      button { cursor: pointer; border: none; background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); color: white; padding: 12px 24px; border-radius: 10px; font-size: 15px; font-weight: 600; transition: all 0.2s; box-shadow: 0 4px 12px rgba(59,130,246,0.3); }
-      button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(59,130,246,0.4); }
-      button:active { transform: translateY(0); }
-      button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-      .stats { display: flex; gap: 24px; margin-bottom: 24px; flex-wrap: wrap; }
-      .stat { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 16px 20px; flex: 1; min-width: 150px; }
-      .stat-label { font-size: 12px; color: rgba(232,238,252,0.6); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
-      .stat-value { font-size: 24px; font-weight: 700; color: #60a5fa; }
-      .results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+      body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 0; background: #0b1020; color: #e8eefc; }
+      header { padding: 20px 24px; border-bottom: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.03); }
+      h1 { margin: 0; font-size: 18px; font-weight: 650; letter-spacing: 0.2px; }
+      .sub { margin-top: 6px; color: rgba(232,238,252,0.72); font-size: 13px; }
+      main { padding: 18px 24px 30px; max-width: 1400px; }
+      .card { border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; background: rgba(255,255,255,0.03); padding: 14px; margin-bottom: 12px; }
+      label { display: block; font-size: 12px; color: rgba(232,238,252,0.75); margin-bottom: 6px; }
+      input { border: 1px solid rgba(255,255,255,0.14); background: rgba(0,0,0,0.20); color: #e8eefc; padding: 8px 10px; border-radius: 10px; width: 100%; box-sizing: border-box; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      button { cursor: pointer; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.06); color: #e8eefc; padding: 8px 10px; border-radius: 10px; }
+      button:hover { background: rgba(255,255,255,0.09); }
+      pre { margin: 0; padding: 12px; overflow: auto; background: rgba(0,0,0,0.25); border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); }
+      a { color: #9cc2ff; text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      .actions { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; }
+      .results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; margin-top: 20px; }
       .image-card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; overflow: hidden; transition: all 0.3s; cursor: pointer; }
       .image-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); border-color: rgba(96,165,250,0.5); }
       .image-wrapper { width: 100%; height: 200px; background: rgba(0,0,0,0.3); position: relative; overflow: hidden; }
       .image-wrapper img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.3s; }
-      .image-card:hover .image-wrapper img { transform: scale(1.05); }
-      .image-info { padding: 16px; }
-      .image-title { font-size: 14px; font-weight: 600; color: #e8eefc; margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.4; }
-      .image-meta { display: flex; gap: 12px; font-size: 12px; color: rgba(232,238,252,0.5); margin-top: 8px; }
-      .image-meta span { display: flex; align-items: center; gap: 4px; }
-      .source-badge { display: inline-block; background: rgba(96,165,250,0.2); color: #60a5fa; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; margin-top: 8px; }
-      .loading { text-align: center; padding: 60px 20px; color: rgba(232,238,252,0.6); }
-      .loading-spinner { width: 40px; height: 40px; border: 3px solid rgba(96,165,250,0.2); border-top-color: #60a5fa; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 16px; }
-      @keyframes spin { to { transform: rotate(360deg); } }
-      .empty { text-align: center; padding: 60px 20px; color: rgba(232,238,252,0.4); }
-      .error { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: 12px; padding: 16px; color: #fca5a5; margin-bottom: 24px; }
-      .json-toggle { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 16px; margin-top: 24px; }
-      .json-toggle summary { cursor: pointer; font-weight: 600; color: rgba(232,238,252,0.8); user-select: none; }
-      .json-toggle pre { margin-top: 12px; padding: 16px; background: rgba(0,0,0,0.3); border-radius: 8px; overflow-x: auto; font-size: 13px; line-height: 1.6; }
+      .image-info { padding: 14px; }
+      .image-title { font-size: 13px; font-weight: 600; color: #e8eefc; margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.4; }
+      .image-meta { display: flex; gap: 12px; font-size: 11px; color: rgba(232,238,252,0.5); margin-top: 8px; }
+      .source-badge { display: inline-block; background: rgba(96,165,250,0.2); color: #60a5fa; padding: 4px 8px; border-radius: 6px; font-size: 10px; font-weight: 600; margin-top: 8px; }
+      .loading { text-align: center; padding: 40px; color: rgba(232,238,252,0.6); }
+      .error { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: 12px; padding: 16px; color: #fca5a5; margin-bottom: 12px; }
+      .stats-bar { display: flex; gap: 20px; margin-bottom: 12px; font-size: 13px; color: rgba(232,238,252,0.7); }
     </style>
   </head>
   <body>
     <header>
       <h1>🖼️ Görsel Arama Testi</h1>
-      <div class="sub">
-        <a href="/">Ana Sayfa</a> • 
-        <a href="/videos">Video Arama</a> • 
-        <a href="/news">Haber Arama</a> • 
-        <a href="/status">Durum</a>
-      </div>
+      <div class="sub">Running on <span>http://localhost:${port}</span> • <a href="/">Home</a> • <a href="/videos">Videos</a> • <a href="/news">News</a> • <a href="/status">Status</a></div>
     </header>
     <main>
-      <div class="controls">
-        <div class="control-row">
-          <div>
-            <label for="q">Arama Sorgusu</label>
-            <input id="q" value="cats" placeholder="Aramak istediğiniz kelimeyi girin..." />
-          </div>
-          <div>
-            <label for="limit">Sonuç Limiti (max 200)</label>
-            <input id="limit" value="50" type="number" min="1" max="200" />
-          </div>
+      <div class="card">
+        <label for="q">Search query</label>
+        <input id="q" value="cats" />
+        <label for="limit" style="margin-top: 10px;">Limit (max 200)</label>
+        <input id="limit" value="50" type="number" />
+        <div class="actions">
+          <button id="runTest">Run Search</button>
         </div>
-        <button id="runTest">🔍 Arama Yap</button>
       </div>
 
       <div id="error" class="error" style="display: none;"></div>
 
-      <div class="stats" id="stats" style="display: none;">
-        <div class="stat">
-          <div class="stat-label">Toplam Sonuç</div>
-          <div class="stat-value" id="count">0</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Sorgu</div>
-          <div class="stat-value" id="query" style="font-size: 18px; color: #a78bfa;">-</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Yanıt Süresi</div>
-          <div class="stat-value" id="time" style="font-size: 18px; color: #34d399;">-</div>
-        </div>
+      <div id="stats" class="stats-bar" style="display: none;">
+        <span>Results: <strong id="count" style="color:#60a5fa;">0</strong></span>
+        <span>Time: <strong id="time" style="color:#34d399;">-</strong></span>
       </div>
 
-      <div id="loading" class="loading" style="display: none;">
-        <div class="loading-spinner"></div>
-        <div>Görsel aranıyor...</div>
-      </div>
+      <div id="loading" class="loading" style="display: none;">Searching...</div>
 
       <div id="results" class="results-grid"></div>
 
-      <details class="json-toggle" id="jsonToggle" style="display: none;">
-        <summary>📋 Ham JSON Verisi</summary>
+      <div class="card" id="jsonToggle" style="display: none; margin-top: 24px;">
+        <div style="font-size: 13px; color: rgba(232,238,252,0.7); margin-bottom: 10px;">Raw JSON</div>
         <pre id="jsonData"></pre>
-      </details>
+      </div>
     </main>
     <script>
       const el = (id) => document.getElementById(id);
-      let currentData = null;
 
       el('runTest').addEventListener('click', async () => {
         const q = el('q').value.trim();
@@ -148,13 +111,11 @@ app.get('/images', (_req: Request, res: Response) => {
           const j = await r.json();
           const duration = ((Date.now() - startTime) / 1000).toFixed(2);
           
-          currentData = j;
           el('loading').style.display = 'none';
           
           if (j.results && j.results.length > 0) {
             el('stats').style.display = 'flex';
             el('count').textContent = j.count || j.results.length;
-            el('query').textContent = j.query;
             el('time').textContent = duration + 's';
 
             j.results.forEach((img, idx) => {
@@ -168,8 +129,8 @@ app.get('/images', (_req: Request, res: Response) => {
                 <div class="image-info">
                   <div class="image-title">\${img.title}</div>
                   <div class="image-meta">
-                    \${img.width && img.height ? \`<span>📐 \${img.width}×\${img.height}</span>\` : ''}
-                    <span>🔢 #\${idx + 1}</span>
+                    \${img.width && img.height ? \`<span>\${img.width}×\${img.height}</span>\` : ''}
+                    <span>#\${idx + 1}</span>
                   </div>
                   \${img.source ? \`<div class="source-badge">\${img.source}</div>\` : ''}
                 </div>
@@ -181,7 +142,7 @@ app.get('/images', (_req: Request, res: Response) => {
             el('jsonToggle').style.display = 'block';
             el('jsonData').textContent = JSON.stringify(j, null, 2);
           } else {
-            el('results').innerHTML = '<div class="empty">😕 Sonuç bulunamadı. Farklı bir arama terimi deneyin.</div>';
+            el('results').innerHTML = '<div class="loading">😕 Sonuç bulunamadı.</div>';
           }
         } catch (e) {
           el('loading').style.display = 'none';
@@ -192,7 +153,6 @@ app.get('/images', (_req: Request, res: Response) => {
         }
       });
 
-      // Enter tuşu ile arama
       el('q').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') el('runTest').click();
       });
@@ -378,6 +338,9 @@ app.get('/', (_req: Request, res: Response) => {
       label { display: block; font-size: 12px; color: rgba(232,238,252,0.75); margin-bottom: 6px; }
       .two { display: grid; grid-template-columns: 1fr; gap: 10px; }
       @media (min-width: 900px) { .two { grid-template-columns: 1fr 1fr; } }
+      .health-item { margin-top: 8px; font-size: 12px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 6px; word-break: break-all; overflow-wrap: break-word; }
+      .health-item.fail { border-left: 3px solid #ff5c7a; }
+      .health-item.ok { border-left: 3px solid #46d39a; }
     </style>
   </head>
   <body>
@@ -398,22 +361,24 @@ app.get('/', (_req: Request, res: Response) => {
         </section>
 
         <section class="card half">
-          <div class="badge" id="healthBadge"><span class="dot" id="healthDot"></span><span id="healthText">Checking /health...</span></div>
-          <div style="height: 12px;"></div>
-          <div class="two">
-            <div>
-              <label for="q">Quick search test (q)</label>
-              <input id="q" value="artado" />
-            </div>
-            <div>
-              <label for="eng">engines (comma)</label>
-              <input id="eng" value="brave,startpage,qwant" />
-            </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <div class="badge" id="healthBadge"><span class="dot" id="healthDot"></span><span id="healthText">Checking /health...</span></div>
+            <a class="badge" href="#" id="openSearch" style="border-radius: 10px; border-color: rgba(70, 211, 154, 0.3); background: rgba(70, 211, 154, 0.05);">
+              <span class="dot ok"></span><span>Run Test Search</span>
+            </a>
           </div>
-          <div class="actions">
-            <button id="runTest">Run /search test</button>
-            <a class="badge" href="#" id="openSearch" style="border-radius: 10px;"><span class="dot ok"></span><span>Open /search</span></a>
+          
+          <div style="margin-top: 20px;">
+            <label style="margin-bottom: 12px; opacity: 0.6; font-size: 11px;">System Health Overview</label>
+            <div class="row"><div class="k">Memory (RSS)</div><div class="v" id="memRss">-</div></div>
+            <div class="row"><div class="k">Heap Used</div><div class="v" id="memHeap">-</div></div>
+            <div class="row"><div class="k">Process ID</div><div class="v" id="pid">-</div></div>
           </div>
+        </section>
+
+        <section class="card" id="engineHealthCard" style="display:none;">
+          <h3 style="margin-top:0; font-size:14px; color:rgba(232,238,252,0.8);">Engine Health / Failures</h3>
+          <div id="engineHealthList"></div>
         </section>
 
         <section class="card">
@@ -424,14 +389,7 @@ app.get('/', (_req: Request, res: Response) => {
     </main>
     <script>
       const el = (id) => document.getElementById(id);
-      const fmtBytes = (n) => {
-        if (!Number.isFinite(n)) return String(n);
-        const u = ['B','KB','MB','GB'];
-        let i = 0; let v = n;
-        while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
-        return v.toFixed(v >= 10 || i === 0 ? 0 : 1) + ' ' + u[i];
-      };
-
+      
       async function load() {
         try {
           const statusRes = await fetch('/status');
@@ -441,11 +399,48 @@ app.get('/', (_req: Request, res: Response) => {
           el('engines').textContent = Array.isArray(status?.engines?.supported) ? status.engines.supported.join(', ') : '-';
           el('statusTime').textContent = new Date().toLocaleTimeString();
           el('status').textContent = JSON.stringify(status, null, 2);
+          
+          // Populate new health fields
+          el('memRss').textContent = (status?.memory?.rss / 1024 / 1024).toFixed(1) + ' MB';
+          el('memHeap').textContent = (status?.memory?.heapUsed / 1024 / 1024).toFixed(1) + ' MB';
+          el('pid').textContent = status?.runtime?.pid ?? '-';
 
           const healthRes = await fetch('/health');
-          const healthOk = healthRes.ok;
+          const healthData = await healthRes.json();
+          const healthOk = healthRes.ok && healthData.ok;
           el('healthDot').className = 'dot ' + (healthOk ? 'ok' : 'err');
-          el('healthText').textContent = healthOk ? 'Healthy' : 'Unhealthy (' + String(healthRes.status) + ')';
+          el('healthText').textContent = healthOk ? 'Healthy' : 'Unhealthy';
+
+          // Engine Health UI
+          if (status.engines && status.engines.health) {
+            const list = el('engineHealthList');
+            list.innerHTML = '';
+            let showCount = 0;
+            
+            for (const [id, h] of Object.entries(status.engines.health)) {
+              if (h.totalRequests === 0 && !h.lastError) continue;
+              
+              showCount++;
+              const div = document.createElement('div');
+              div.className = 'health-item ' + (h.totalErrors > 0 && h.lastError > (h.lastSuccess || '') ? 'fail' : 'ok');
+              
+              div.innerHTML = \`
+                <div style="display:flex; justify-content:space-between;">
+                  <strong>\${id}</strong>
+                  <span>req: \${h.totalRequests} | err: \${h.totalErrors}</span>
+                </div>
+                \${h.lastErrorMessage ? \`<div style="color:#ff5c7a; margin-top:4px; font-size:11px;">Error: \${h.lastErrorMessage}</div>\` : ''}
+                <div style="font-size:10px; color:rgba(232,238,252,0.5); margin-top:4px;">
+                  \${h.lastSuccess ? \`Last OK: \${new Date(h.lastSuccess).toLocaleTimeString()}\` : 'Never succeeded'}
+                  \${h.lastError ? \` | Last Fail: \${new Date(h.lastError).toLocaleTimeString()}\` : ''}
+                </div>
+              \`;
+              list.appendChild(div);
+            }
+            
+            el('engineHealthCard').style.display = showCount > 0 ? 'block' : 'none';
+          }
+
         } catch (e) {
           el('healthDot').className = 'dot err';
           el('healthText').textContent = 'Failed to load status';
@@ -456,27 +451,11 @@ app.get('/', (_req: Request, res: Response) => {
       el('refresh').addEventListener('click', load);
 
       function syncOpenSearchLink() {
-        const q = encodeURIComponent(el('q').value || '');
-        const engines = encodeURIComponent(el('eng').value || '');
-        const url = '/search?q=' + q + '&engines=' + engines + '&limitTotal=20&limitPerEngine=5&timeoutMs=20000&cache=1';
+        const url = '/search?q=artado&limitTotal=20&limitPerEngine=5&timeoutMs=20000&cache=1';
         el('openSearch').setAttribute('href', url);
       }
 
-      el('q').addEventListener('input', syncOpenSearchLink);
-      el('eng').addEventListener('input', syncOpenSearchLink);
       syncOpenSearchLink();
-
-      el('runTest').addEventListener('click', async () => {
-        syncOpenSearchLink();
-        const href = el('openSearch').getAttribute('href');
-        try {
-          const r = await fetch(href);
-          const j = await r.json();
-          alert('ok=' + String(r.ok) + ' status=' + String(r.status) + ' results=' + String(Array.isArray(j?.results) ? j.results.length : 0));
-        } catch (e) {
-          alert(String(e));
-        }
-      });
 
       load();
     </script>
@@ -486,6 +465,7 @@ app.get('/', (_req: Request, res: Response) => {
 
 app.get('/status', (_req: Request, res: Response) => {
   const supported = engines.map((e) => e.id);
+  const health = getEngineHealth();
   const mem = process.memoryUsage();
   res.json({
     ok: true,
@@ -499,7 +479,8 @@ app.get('/status', (_req: Request, res: Response) => {
       uptimeSec: Math.floor(process.uptime())
     },
     engines: {
-      supported
+      supported,
+      health
     },
     memory: {
       rss: mem.rss,
@@ -511,7 +492,19 @@ app.get('/status', (_req: Request, res: Response) => {
 });
 
 app.get('/health', (_req: Request, res: Response) => {
-  res.json({ ok: true });
+  const health = getEngineHealth();
+  const enginesTotal = Object.keys(health).length;
+  const failedEngines = Object.entries(health).filter(([_, h]) => h.totalErrors > 0 && h.lastError! > (h.lastSuccess || '')).length;
+
+  // Consider unhealthy if more than 50% of engines are failing
+  const ok = enginesTotal > 0 ? (failedEngines / enginesTotal < 0.5) : true;
+
+  res.status(ok ? 200 : 503).json({
+    ok,
+    enginesTotal,
+    failedEngines,
+    details: failedEngines > 0 ? 'Some engines are failing' : 'All systems normal'
+  });
 });
 
 app.get('/search', async (req: Request, res: Response) => {

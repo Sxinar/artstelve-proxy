@@ -7,6 +7,19 @@ import { engines } from './engines/index.js';
 const engineMap = new Map<SearchEngineId, Engine>(engines.map((e) => [e.id, e]));
 const defaultEngines: SearchEngineId[] = engines.map((e) => e.id);
 
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new Error('aborted'));
+    const t = setTimeout(resolve, ms);
+    if (signal) {
+      signal.addEventListener('abort', () => {
+        clearTimeout(t);
+        reject(new Error('aborted'));
+      }, { once: true });
+    }
+  });
+}
+
 function parseDomainList(raw?: string): Set<string> {
   if (!raw) return new Set();
   const parts = raw
@@ -174,6 +187,26 @@ export function parseEnginesParam(raw?: string): SearchEngineId[] {
   return uniq.filter((id) => engineMap.has(id));
 }
 
+export interface EngineHealth {
+  lastSuccess?: string;
+  lastError?: string;
+  lastErrorMessage?: string;
+  totalRequests: number;
+  totalErrors: number;
+}
+
+const engineHealthMap = new Map<SearchEngineId, EngineHealth>(
+  engines.map((e) => [e.id, { totalRequests: 0, totalErrors: 0 }])
+);
+
+export function getEngineHealth(): Record<SearchEngineId, EngineHealth> {
+  const result: Record<string, EngineHealth> = {};
+  for (const [id, health] of engineHealthMap.entries()) {
+    result[id] = health;
+  }
+  return result;
+}
+
 export async function metaSearch(params: {
   query: string;
   engines: SearchEngineId[];
@@ -217,11 +250,19 @@ export async function metaSearch(params: {
           region: params.region
         };
 
+        const health = engineHealthMap.get(engineId)!;
+        health.totalRequests++;
+
         try {
           const out = await engine.search(p);
+          health.lastSuccess = new Date().toISOString();
           return out.map((r, idx) => ({ ...r, _pos: idx, _score: (engineWeight[engineId] ?? 0.5) / (1 + idx) }));
         } catch (e) {
           const msg = e instanceof Error ? e.message : 'engine error';
+          health.totalErrors++;
+          health.lastError = new Date().toISOString();
+          health.lastErrorMessage = msg;
+
           if (msg.startsWith('blocked_or_captcha')) {
             blockedUntil.set(engineId, Date.now() + blockedCooldownMs);
           }
