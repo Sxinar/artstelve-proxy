@@ -40,7 +40,9 @@ function isSearchEngineHost(host: string): boolean {
     host === 'search.brave.com' ||
     host.endsWith('.search.brave.com') ||
     host === 'startpage.com' ||
-    host.endsWith('.startpage.com')
+    host.endsWith('.startpage.com') ||
+    host === 'marginalia.nu' ||
+    host.endsWith('.marginalia.nu')
   );
 }
 
@@ -102,30 +104,6 @@ function cleanResultUrl(rawUrl: string): string {
       }
     }
 
-    // AOL click redirect: /click/.../RU=<encoded>/... or /click?...&u=<target>
-    if ((host === 'search.aol.com' || host.endsWith('.search.aol.com')) && u.pathname.toLowerCase().includes('click')) {
-      const m = u.pathname.match(/\/RU=([^/]+)/i);
-      if (m && m[1]) {
-        const ruPath = m[1];
-        try {
-          const decoded = decodeURIComponent(ruPath);
-          if (decoded.startsWith('http://') || decoded.startsWith('https://')) return decoded;
-        } catch {
-          if (ruPath.startsWith('http://') || ruPath.startsWith('https://')) return ruPath;
-        }
-      }
-
-      const target = u.searchParams.get('u') || u.searchParams.get('url') || '';
-      if (target) {
-        try {
-          const decoded = decodeURIComponent(target);
-          if (decoded.startsWith('http://') || decoded.startsWith('https://')) return decoded;
-        } catch {
-          if (target.startsWith('http://') || target.startsWith('https://')) return target;
-        }
-      }
-    }
-
     return u.toString();
   } catch {
     return '';
@@ -166,8 +144,8 @@ const engineWeight: Record<SearchEngineId, number> = {
   ecosia: 0.8,
   mojeek: 0.75,
   yahoo: 0.7,
-  aol: 0.65,
-  ask: 0.6
+  ask: 0.5,
+  marginalia: 0.75
 };
 
 const cache = new LRUCache<string, { results: SearchResult[]; errors: EngineError[] }>({

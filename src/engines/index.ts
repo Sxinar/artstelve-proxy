@@ -10,7 +10,7 @@ import { qwant } from './qwant.js';
 import { ecosia } from './ecosia.js';
 import { mojeek } from './mojeek.js';
 import { ask } from './ask.js';
-import { aol } from './aol.js';
+import { marginalia } from './marginalia.js';
 
 export const engines: Engine[] = [
   duckduckgo,
@@ -24,5 +24,5 @@ export const engines: Engine[] = [
   ecosia,
   mojeek,
   ask,
-  aol
+  marginalia
 ];

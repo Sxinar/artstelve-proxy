@@ -10,7 +10,7 @@ export type SearchEngineId =
   | 'ecosia'
   | 'mojeek'
   | 'ask'
-  | 'aol';
+  | 'marginalia';
 
 export type SearchResult = {
   engine: SearchEngineId;
