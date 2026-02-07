@@ -102,8 +102,19 @@ function cleanResultUrl(rawUrl: string): string {
       }
     }
 
-    // AOL click redirect: /click;_ylt=...?...&u=<target>
+    // AOL click redirect: /click/.../RU=<encoded>/... or /click?...&u=<target>
     if ((host === 'search.aol.com' || host.endsWith('.search.aol.com')) && u.pathname.toLowerCase().includes('click')) {
+      const m = u.pathname.match(/\/RU=([^/]+)/i);
+      if (m && m[1]) {
+        const ruPath = m[1];
+        try {
+          const decoded = decodeURIComponent(ruPath);
+          if (decoded.startsWith('http://') || decoded.startsWith('https://')) return decoded;
+        } catch {
+          if (ruPath.startsWith('http://') || ruPath.startsWith('https://')) return ruPath;
+        }
+      }
+
       const target = u.searchParams.get('u') || u.searchParams.get('url') || '';
       if (target) {
         try {
