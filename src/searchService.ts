@@ -180,12 +180,74 @@ export type EngineHealth = {
   lastSuccess?: string;
   lastError?: string;
   lastErrorMessage?: string;
+  avgResponseTime?: number;
+  totalResults?: number;
+};
+
+// Global search statistics
+let globalSearchStats = {
+  totalSearches: 0,
+  totalResults: 0,
+  totalErrors: 0,
+  avgResponseTime: 0,
+  searchesToday: 0,
+  searchesThisHour: 0,
+  lastSearchTime: '',
+  searchQueries: [] as string[],
+  popularQueries: {} as Record<string, number>
 };
 
 const engineHealth = new Map<SearchEngineId, EngineHealth>();
 
 export function getEngineHealth(): Record<string, EngineHealth> {
-  return Object.fromEntries(engineHealth.entries());
+  const health = Object.fromEntries(engineHealth.entries());
+  
+  // If no engines have been used yet, return empty health data for all available engines
+  if (Object.keys(health).length === 0) {
+    const emptyHealth: Record<string, EngineHealth> = {};
+    engines.forEach(engine => {
+      emptyHealth[engine.id] = {
+        totalRequests: 0,
+        totalErrors: 0,
+        totalResults: 0,
+        avgResponseTime: 0
+      };
+    });
+    return emptyHealth;
+  }
+  
+  return health;
+}
+
+export function getGlobalSearchStats() {
+  return { ...globalSearchStats };
+}
+
+function updateGlobalSearchStats(query: string, resultCount: number, responseTime: number, hasError: boolean) {
+  globalSearchStats.totalSearches++;
+  globalSearchStats.totalResults += resultCount;
+  if (hasError) globalSearchStats.totalErrors++;
+  
+  // Update average response time
+  globalSearchStats.avgResponseTime = 
+    (globalSearchStats.avgResponseTime * (globalSearchStats.totalSearches - 1) + responseTime) / globalSearchStats.totalSearches;
+  
+  // Update time-based counters
+  const now = new Date();
+  const today = now.toDateString();
+  const thisHour = now.getHours();
+  
+  globalSearchStats.lastSearchTime = now.toISOString();
+  globalSearchStats.searchQueries.push(query);
+  
+  // Keep only last 100 queries
+  if (globalSearchStats.searchQueries.length > 100) {
+    globalSearchStats.searchQueries = globalSearchStats.searchQueries.slice(-100);
+  }
+  
+  // Update popular queries
+  const queryLower = query.toLowerCase();
+  globalSearchStats.popularQueries[queryLower] = (globalSearchStats.popularQueries[queryLower] || 0) + 1;
 }
 
 export function parseEnginesParam(raw?: string): SearchEngineId[] {
@@ -211,6 +273,7 @@ export async function metaSearch(params: {
   region?: string;
   pageno?: number;
 }): Promise<{ results: SearchResult[]; errors: EngineError[] }> {
+  const startTime = Date.now();
   const limitTotal = Math.max(1, Math.min(200, params.limitTotal ?? 25));
   const pageno = Math.max(1, params.pageno ?? 1);
   const key = `${params.query}::${params.engines.join(',')}::${params.limitPerEngine}::${limitTotal}::${params.includeDomains ?? ''}::${params.excludeDomains ?? ''}::${params.region ?? ''}::${pageno}`;
@@ -229,9 +292,26 @@ export async function metaSearch(params: {
       const engine = engineMap.get(engineId);
       if (!engine) return [];
 
+      // Update engine health - increment request count
+      const currentHealth = engineHealth.get(engineId) || { 
+        totalRequests: 0, 
+        totalErrors: 0, 
+        totalResults: 0,
+        avgResponseTime: 0 
+      };
+      currentHealth.totalRequests++;
+      engineHealth.set(engineId, currentHealth);
+
       const until = blockedUntil.get(engineId);
       if (until && until > Date.now()) {
         errors.push({ engine: engineId, message: `skipped_recent_blocked until=${new Date(until).toISOString()}` });
+        
+        // Update engine health - record error
+        currentHealth.totalErrors++;
+        currentHealth.lastError = new Date().toISOString();
+        currentHealth.lastErrorMessage = `skipped_recent_blocked until=${new Date(until).toISOString()}`;
+        engineHealth.set(engineId, currentHealth);
+        
         return [];
       }
 
@@ -246,13 +326,37 @@ export async function metaSearch(params: {
         };
 
         try {
+          const engineStartTime = Date.now();
           const out = await engine.search(p);
+          const engineResponseTime = Date.now() - engineStartTime;
+          
+          // Update engine health - record success
+          currentHealth.lastSuccess = new Date().toISOString();
+          currentHealth.totalResults = (currentHealth.totalResults || 0) + out.length;
+          
+          // Update average response time
+          if (!currentHealth.avgResponseTime) {
+            currentHealth.avgResponseTime = engineResponseTime;
+          } else {
+            currentHealth.avgResponseTime = 
+              (currentHealth.avgResponseTime * (currentHealth.totalRequests - 1) + engineResponseTime) / currentHealth.totalRequests;
+          }
+          
+          engineHealth.set(engineId, currentHealth);
+          
           return out.map((r, idx) => ({ ...r, _pos: idx, _score: (engineWeight[engineId] ?? 0.5) / (1 + idx) }));
         } catch (e) {
           const msg = e instanceof Error ? e.message : 'engine error';
           if (msg.startsWith('blocked_or_captcha')) {
             blockedUntil.set(engineId, Date.now() + blockedCooldownMs);
           }
+          
+          // Update engine health - record error
+          currentHealth.totalErrors++;
+          currentHealth.lastError = new Date().toISOString();
+          currentHealth.lastErrorMessage = msg;
+          engineHealth.set(engineId, currentHealth);
+          
           errors.push({ engine: engineId, message: msg });
           return [];
         }
@@ -389,5 +493,10 @@ export async function metaSearch(params: {
 
   const payload = { results, errors };
   if (useCache) cache.set(key, payload);
+
+  // Update global search statistics
+  const totalResponseTime = Date.now() - startTime;
+  updateGlobalSearchStats(params.query, results.length, totalResponseTime, errors.length > 0);
+
   return payload;
 }
