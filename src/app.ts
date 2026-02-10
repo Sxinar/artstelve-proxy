@@ -898,8 +898,8 @@ app.get('/auth/github/callback', async (req: Request, res: Response) => {
     
     // Check if user is sxinar (case-insensitive)
     if (userData.login.toLowerCase() === 'sxinar') {
-      // Create session token (simple implementation)
-      const sessionToken = 'sxinar-admin-' + Date.now();
+      // Create session token with timestamp
+      const sessionToken = `sxinar-admin-${Date.now()}`;
       console.log('Access granted for sxinar, redirecting with token');
       
       // Redirect to admin page with token
@@ -928,7 +928,21 @@ app.get('/admin', async (req: Request, res: Response) => {
 
   // Check for admin authentication
   const token = req.query.token as string;
-  const isAuthenticated = token && token.startsWith('sxinar-admin-');
+  
+  // Simple token validation (timestamp-based)
+  const isAuthenticated = token && (() => {
+    const parts = token.split('-');
+    if (parts.length !== 3 || parts[0] !== 'sxinar' || parts[1] !== 'admin') return false;
+    
+    const timestamp = parseInt(parts[2]);
+    const now = Date.now();
+    
+    // Token must be from last 5 minutes and timestamp must be reasonable
+    const fiveMinutesAgo = now - 5 * 60 * 1000;
+    const oneMinuteFromNow = now + 60 * 1000;
+    
+    return !isNaN(timestamp) && timestamp > fiveMinutesAgo && timestamp < oneMinuteFromNow;
+  })();
   
   // TEMPORARY: Allow direct access for testing
   if (req.query.debug === 'sxinar') {
