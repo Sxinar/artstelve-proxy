@@ -851,6 +851,8 @@ app.get('/auth/github/callback', async (req: Request, res: Response) => {
   const code = req.query.code as string;
   const state = req.query.state as string;
   
+  console.log('OAuth callback received:', { code: !!code, state });
+  
   if (!code) {
     res.status(400).send('Authorization code missing');
     return;
@@ -872,6 +874,7 @@ app.get('/auth/github/callback', async (req: Request, res: Response) => {
     });
 
     const tokenData = await tokenResponse.json();
+    console.log('Token response:', { error: tokenData.error, hasToken: !!tokenData.access_token });
     
     if (tokenData.error) {
       res.status(400).send('OAuth failed: ' + tokenData.error_description);
@@ -885,16 +888,25 @@ app.get('/auth/github/callback', async (req: Request, res: Response) => {
       },
     });
 
+    if (!userResponse.ok) {
+      console.error('GitHub API error:', userResponse.status, userResponse.statusText);
+      res.status(500).send('Failed to fetch user data from GitHub');
+      return;
+    }
+
     const userData = await userResponse.json();
+    console.log('GitHub user data:', userData.login); // Debug log
     
     // Check if user is sxinar
     if (userData.login === 'sxinar') {
       // Create session token (simple implementation)
       const sessionToken = 'sxinar-admin-' + Date.now();
+      console.log('Access granted for sxinar, redirecting with token');
       
       // Redirect to admin page with token
       res.redirect(`/admin?token=${sessionToken}`);
     } else {
+      console.log('Access denied for user:', userData.login);
       res.status(403).send('Access denied. Only sxinar can access this page.');
     }
   } catch (error) {
@@ -943,7 +955,7 @@ app.get('/admin', async (req: Request, res: Response) => {
       <div class="warning">
         ⚠️ Sadece sxinar GitHub hesabı erişebilir
       </div>
-      <a href="https://github.com/login/oauth/authorize?client_id=${process.env.GITHUB_CLIENT_ID || 'YOUR_CLIENT_ID'}&scope=user:email&redirect_uri=${encodeURIComponent(process.env.NODE_ENV === 'production' ? 'https://artstelve-proxy.vercel.app/auth/github/callback' : `http://localhost:${port}/auth/github/callback`)}" class="github-btn">
+      <a href="https://github.com/login/oauth/authorize?client_id=${process.env.GITHUB_CLIENT_ID || 'YOUR_CLIENT_ID'}&scope=user:email&redirect_uri=${encodeURIComponent(`http://localhost:${port}/auth/github/callback`)}" class="github-btn">
         <svg class="icon" viewBox="0 0 24 24" fill="currentColor">
           <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
         </svg>
