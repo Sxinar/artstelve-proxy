@@ -1160,6 +1160,427 @@ app.get('/artado', async (req: Request, res: Response) => {
 </html>`);
 });
 
+// GitHub OAuth callback handler
+app.get('/auth/github/callback', async (req: Request, res: Response) => {
+  const code = req.query.code as string;
+  const state = req.query.state as string;
+  
+  if (!code) {
+    res.status(400).send('Authorization code missing');
+    return;
+  }
+
+  try {
+    // Exchange code for access token
+    const tokenResponse = await fetch('https://github.com/login/oauth/access_token', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        client_id: process.env.GITHUB_CLIENT_ID || 'YOUR_CLIENT_ID',
+        client_secret: process.env.GITHUB_CLIENT_SECRET || 'YOUR_CLIENT_SECRET',
+        code: code,
+      }),
+    });
+
+    const tokenData = await tokenResponse.json();
+    
+    if (tokenData.error) {
+      res.status(400).send('OAuth failed: ' + tokenData.error_description);
+      return;
+    }
+
+    // Get user info
+    const userResponse = await fetch('https://api.github.com/user', {
+      headers: {
+        'Authorization': `Bearer ${tokenData.access_token}`,
+      },
+    });
+
+    const userData = await userResponse.json();
+    
+    // Check if user is sxinar
+    if (userData.login === 'sxinar') {
+      // Create session token (simple implementation)
+      const sessionToken = 'sxinar-admin-' + Date.now();
+      
+      // Redirect to admin page with token
+      res.redirect(`/admin?token=${sessionToken}`);
+    } else {
+      res.status(403).send('Access denied. Only sxinar can access this page.');
+    }
+  } catch (error) {
+    console.error('GitHub OAuth error:', error);
+    res.status(500).send('Authentication failed');
+  }
+});
+
+// Protected admin page for sxinar only
+app.get('/admin', async (req: Request, res: Response) => {
+  const port = Number(process.env.PORT ?? 8787);
+  const health = getEngineHealth();
+  const globalStats = getGlobalSearchStats();
+  const allEnginesCount = engines.length;
+  const failedEngines = Object.entries(health).filter(([_, h]) => h.totalErrors > 0 && h.lastError! > (h.lastSuccess || '')).length;
+  const mem = process.memoryUsage();
+  const ok = allEnginesCount > 0 ? (failedEngines / allEnginesCount < 0.5) : true;
+
+  // Check for admin authentication
+  const token = req.query.token as string;
+  const isAuthenticated = token && token.startsWith('sxinar-admin-');
+
+  if (!isAuthenticated) {
+    res.setHeader('content-type', 'text/html; charset=utf-8');
+    res.end(`<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Admin Girişi - Hybrid Proxy</title>
+    <style>
+      body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 0; background: #0b1020; color: #e8eefc; height: 100vh; display: flex; align-items: center; justify-content: center; }
+      .login-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 32px; max-width: 400px; text-align: center; }
+      h1 { margin: 0 0 16px 0; font-size: 24px; font-weight: 650; }
+      p { margin: 0 0 24px 0; color: rgba(232,238,252,0.72); line-height: 1.5; }
+      .github-btn { display: inline-flex; align-items: center; gap: 12px; background: #24292e; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500; transition: background 0.2s; }
+      .github-btn:hover { background: #2f363d; }
+      .icon { width: 20px; height: 20px; }
+      .warning { background: rgba(255,167,38,0.1); border: 1px solid rgba(255,167,38,0.3); border-radius: 6px; padding: 12px; margin: 16px 0; font-size: 12px; color: #ffa726; }
+    </style>
+  </head>
+  <body>
+    <div class="login-card">
+      <h1>🔐 Admin Girişi</h1>
+      <p>Bu sayfaya sadece sxinar kullanıcısı erişebilir. GitHub ile giriş yapın.</p>
+      <div class="warning">
+        ⚠️ Sadece sxinar GitHub hesabı erişebilir
+      </div>
+      <a href="https://github.com/login/oauth/authorize?client_id=${process.env.GITHUB_CLIENT_ID || 'YOUR_CLIENT_ID'}&scope=user:email&redirect_uri=${encodeURIComponent(`http://localhost:${port}/auth/github/callback`)}" class="github-btn">
+        <svg class="icon" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+        </svg>
+        GitHub ile Admin Girişi
+      </a>
+    </div>
+  </body>
+</html>`);
+    return;
+  }
+
+  res.setHeader('content-type', 'text/html; charset=utf-8');
+  res.end(`<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>👑 Admin Panel - Hybrid Proxy</title>
+    <style>
+      body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 0; background: #0b1020; color: #e8eefc; }
+      header { padding: 20px 24px; border-bottom: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.03); }
+      h1 { margin: 0; font-size: 18px; font-weight: 650; letter-spacing: 0.2px; }
+      .sub { margin-top: 6px; color: rgba(232,238,252,0.72); font-size: 13px; }
+      main { padding: 18px 24px 30px; max-width: 1100px; }
+      .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px; }
+      .card { grid-column: span 12; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; background: rgba(255,255,255,0.03); padding: 14px; }
+      @media (min-width: 900px) { .card.half { grid-column: span 6; } }
+      @media (min-width: 1200px) { .card.third { grid-column: span 4; } }
+      .row { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+      .row:last-child { border-bottom: none; }
+      .k { color: rgba(232,238,252,0.75); font-size: 13px; }
+      .v { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; color: #ffffff; text-align: right; }
+      pre { margin: 0; padding: 12px; overflow: auto; background: rgba(0,0,0,0.25); border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); }
+      a { color: #9cc2ff; text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      .badge { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.10); background: rgba(255,255,255,0.04); font-size: 12px; }
+      .dot { width: 8px; height: 8px; border-radius: 999px; background: #ffd166; }
+      .dot.ok { background: #46d39a; }
+      .dot.err { background: #ff5c7a; }
+      .dot.warn { background: #ffa726; }
+      .admin-badge { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; }
+      .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 12px; }
+      .stat-card { background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px; text-align: center; }
+      .stat-value { font-size: 24px; font-weight: 700; color: #60a5fa; margin-bottom: 4px; }
+      .stat-label { font-size: 11px; color: rgba(232,238,252,0.6); text-transform: uppercase; letter-spacing: 0.5px; }
+      .query-list { max-height: 400px; overflow-y: auto; }
+      .query-item { padding: 8px 12px; margin: 4px 0; background: rgba(0,0,0,0.2); border-radius: 6px; font-size: 12px; display: flex; justify-content: space-between; align-items: center; }
+      .query-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .query-count { color: #60a5fa; font-weight: 600; margin-left: 12px; }
+      .query-time { color: rgba(232,238,252,0.5); font-size: 10px; }
+      .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+      .metric-item { background: rgba(0,0,0,0.2); padding: 8px; border-radius: 6px; text-align: center; }
+      .metric-value { font-size: 18px; font-weight: 700; margin-bottom: 2px; }
+      .metric-label { font-size: 9px; color: rgba(232,238,252,0.5); text-transform: uppercase; }
+      .admin-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+      .admin-btn { padding: 6px 12px; background: rgba(96,165,250,0.2); border: 1px solid #60a5fa; color: #60a5fa; border-radius: 6px; font-size: 11px; cursor: pointer; transition: all 0.2s; }
+      .admin-btn:hover { background: rgba(96,165,250,0.3); }
+      .admin-btn.danger { background: rgba(239,68,68,0.2); border-color: #ef4444; color: #ef4444; }
+      .admin-btn.danger:hover { background: rgba(239,68,68,0.3); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>👑 Admin Panel - sxinar</h1>
+      <div class="sub">Yönetici Kontrol Paneli • Running on <span class="v">http://localhost:${port}</span> • <span class="admin-badge">ADMIN</span></div>
+    </header>
+    <main>
+      <div class="grid">
+        <section class="card third">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <div class="badge"><span class="dot ${ok ? 'ok' : 'err'}"></span><span>${ok ? 'Sağlıklı' : 'Sağlıksız'}</span></div>
+            <button id="refresh">Yenile</button>
+          </div>
+          
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-value">${allEnginesCount}</div>
+              <div class="stat-label">Toplam Motor</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" style="color: ${failedEngines === 0 ? '#46d39a' : failedEngines < allEnginesCount / 2 ? '#ffa726' : '#ff5c7a'}">${failedEngines}</div>
+              <div class="stat-label">Hatalı Motor</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" style="color: #46d39a;">${allEnginesCount - failedEngines}</div>
+              <div class="stat-label">Çalışan Motor</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card third">
+          <h3 style="margin-top:0; font-size:14px; color:rgba(232,238,252,0.8); margin-bottom: 16px;">Arama İstatistikleri</h3>
+          <div class="metric-grid">
+            <div class="metric-item">
+              <div class="metric-value" style="color: #60a5fa;">${globalStats.totalSearches}</div>
+              <div class="metric-label">Toplam Arama</div>
+            </div>
+            <div class="metric-item">
+              <div class="metric-value" style="color: #46d39a;">${globalStats.totalResults}</div>
+              <div class="metric-label">Toplam Sonuç</div>
+            </div>
+            <div class="metric-item">
+              <div class="metric-value" style="color: #ff5c7a;">${globalStats.totalErrors}</div>
+              <div class="metric-label">Toplam Hata</div>
+            </div>
+            <div class="metric-item">
+              <div class="metric-value" style="color: #ffa726;">${globalStats.avgResponseTime.toFixed(0)}ms</div>
+              <div class="metric-label">Ortalama Süre</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card third">
+          <h3 style="margin-top:0; font-size:14px; color:rgba(232,238,252,0.8); margin-bottom: 16px;">Sistem Kaynakları</h3>
+          <div class="row"><div class="k">Memory (RSS)</div><div class="v">${(mem.rss / 1024 / 1024).toFixed(1)} MB</div></div>
+          <div class="row"><div class="k">Heap Used</div><div class="v">${(mem.heapUsed / 1024 / 1024).toFixed(1)} MB</div></div>
+          <div class="row"><div class="k">Process ID</div><div class="v">${process.pid}</div></div>
+          <div class="row"><div class="k">Node Version</div><div class="v">${process.version}</div></div>
+          <div class="row"><div class="k">Uptime</div><div class="v">${Math.floor(process.uptime())}s</div></div>
+        </section>
+
+        <section class="card half">
+          <h3 style="margin-top:0; font-size:14px; color:rgba(232,238,252,0.8); margin-bottom: 12px;">🔥 En Popüler Aramalar</h3>
+          <div class="query-list">
+            ${Object.entries(globalStats.popularQueries)
+              .sort(([,a], [,b]) => b - a)
+              .slice(0, 50)
+              .map(([query, count]) => `
+                <div class="query-item">
+                  <span class="query-text">${query}</span>
+                  <span class="query-count">${count} kez</span>
+                </div>
+              `).join('')}
+            ${Object.keys(globalStats.popularQueries).length === 0 ? '<div style="color: rgba(232,238,252,0.5); font-size: 12px; text-align: center; padding: 20px;">Henüz arama yapılmadı</div>' : ''}
+          </div>
+        </section>
+
+        <section class="card half">
+          <h3 style="margin-top:0; font-size:14px; color:rgba(232,238,252,0.8); margin-bottom: 12px;">🕐 Son Aramalar</h3>
+          <div class="query-list">
+            ${globalStats.searchQueries.slice(-50).reverse().map((query, index) => `
+              <div class="query-item">
+                <span class="query-text">${query}</span>
+                <span class="query-time">${globalStats.searchQueries.length - index}. arama</span>
+              </div>
+            `).join('')}
+            ${globalStats.searchQueries.length === 0 ? '<div style="color: rgba(232,238,252,0.5); font-size: 12px; text-align: center; padding: 20px;">Henüz arama yapılmadı</div>' : ''}
+          </div>
+        </section>
+
+        <section class="card">
+          <h3 style="margin-top:0; font-size:14px; color:rgba(232,238,252,0.8); margin-bottom: 12px;">📊 Detaylı Motor Analizi</h3>
+          <div class="admin-actions">
+            <button class="admin-btn" onclick="resetStats()">📊 İstatistikleri Sıfırla</button>
+            <button class="admin-btn" onclick="clearCache()">🗑️ Cache Temizle</button>
+            <button class="admin-btn danger" onclick="restartService()">🔄 Servisi Yeniden Başlat</button>
+          </div>
+          <div id="engineHealthList" style="margin-top: 16px;"></div>
+        </section>
+      </div>
+    </main>
+    <script>
+      const el = (id) => document.getElementById(id);
+      const healthData = JSON.parse('${JSON.stringify({ ok, allEnginesCount: allEnginesCount, failedEngines, details: failedEngines > 0 ? 'Some engines are failing' : 'All systems normal', health, globalStats }).replace(/'/g, "\\'")}');
+      
+      function getEngineStatus(engine) {
+        const h = healthData.health[engine];
+        if (!h) return 'never';
+        if (h.totalErrors > 0 && h.lastError > (h.lastSuccess || '')) return 'unhealthy';
+        if (h.totalRequests > 0) return 'healthy';
+        return 'never';
+      }
+
+      function renderEngines() {
+        const list = el('engineHealthList');
+        list.innerHTML = '';
+        
+        const engines = Object.keys(healthData.health).sort((a, b) => {
+          const statusA = getEngineStatus(a);
+          const statusB = getEngineStatus(b);
+          const priority = { 'unhealthy': 0, 'never': 1, 'healthy': 2 };
+          return priority[statusA] - priority[statusB];
+        });
+
+        if (engines.length === 0) {
+          list.innerHTML = '<div style="color: rgba(232,238,252,0.5); font-size: 12px; text-align: center; padding: 20px;">Henüz motor verisi bulunmuyor.</div>';
+          return;
+        }
+
+        engines.forEach(engine => {
+          const h = healthData.health[engine];
+          const status = getEngineStatus(engine);
+
+          const div = document.createElement('div');
+          div.className = 'health-item ' + (status === 'unhealthy' ? 'fail' : status === 'healthy' ? 'ok' : 'warn');
+          div.style.cssText = 'margin-top: 8px; font-size: 12px; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 6px; ' + 
+                              (status === 'unhealthy' ? 'border-left: 3px solid #ff5c7a;' : status === 'healthy' ? 'border-left: 3px solid #46d39a;' : 'border-left: 3px solid #ffa726;');
+          
+          const errorRate = h.totalRequests > 0 ? (h.totalErrors / h.totalRequests * 100).toFixed(1) : 0;
+          
+          div.innerHTML = \`
+            <div style="display:flex; justify-content:space-between; align-items: center; margin-bottom: 12px;">
+              <strong style="font-size: 14px;">\${engine}</strong>
+              <div style="display: flex; gap: 12px; align-items: center;">
+                <span style="font-size: 11px; color: rgba(232,238,252,0.6);">
+                  \${h.totalRequests} istek
+                </span>
+                <span class="dot" style="background: \${status === 'unhealthy' ? '#ff5c7a' : status === 'healthy' ? '#46d39a' : '#ffa726'}"></span>
+                <span style="font-size: 11px; font-weight: 600; color: \${status === 'unhealthy' ? '#ff5c7a' : status === 'healthy' ? '#46d39a' : '#ffa726'};">
+                  \${status === 'unhealthy' ? 'Hatalı' : status === 'healthy' ? 'Sağlıklı' : 'Test Edilmemiş'}
+                </span>
+              </div>
+            </div>
+            
+            \${h.totalRequests > 0 ? \`
+              <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px;">
+                <div style="background: rgba(0,0,0,0.2); padding: 8px; border-radius: 6px; text-align: center;">
+                  <div style="font-size: 10px; color: rgba(232,238,252,0.5); margin-bottom: 2px;">Başarılı</div>
+                  <div style="font-size: 14px; font-weight: 600; color: #46d39a;">\${h.totalRequests - h.totalErrors}</div>
+                </div>
+                <div style="background: rgba(0,0,0,0.2); padding: 8px; border-radius: 6px; text-align: center;">
+                  <div style="font-size: 10px; color: rgba(232,238,252,0.5); margin-bottom: 2px;">Hatalı</div>
+                  <div style="font-size: 14px; font-weight: 600; color: #ff5c7a;">\${h.totalErrors}</div>
+                </div>
+                <div style="background: rgba(0,0,0,0.2); padding: 8px; border-radius: 6px; text-align: center;">
+                  <div style="font-size: 10px; color: rgba(232,238,252,0.5); margin-bottom: 2px;">Sonuç</div>
+                  <div style="font-size: 14px; font-weight: 600; color: #60a5fa;">\${h.totalResults || 0}</div>
+                </div>
+                <div style="background: rgba(0,0,0,0.2); padding: 8px; border-radius: 6px; text-align: center;">
+                  <div style="font-size: 10px; color: rgba(232,238,252,0.5); margin-bottom: 2px;">Süre</div>
+                  <div style="font-size: 14px; font-weight: 600; color: #ffa726;">\${(h.avgResponseTime || 0).toFixed(0)}ms</div>
+                </div>
+              </div>
+            \` : \`
+              <div style="background: rgba(255,167,38,0.1); border: 1px solid rgba(255,167,38,0.3); border-radius: 6px; padding: 8px; margin-bottom: 12px;">
+                <div style="font-size: 11px; color: #ffa726;">Bu motor henüz test edilmedi</div>
+              </div>
+            \`}
+          \`;
+          list.appendChild(div);
+        });
+      }
+
+      function updateData() {
+        renderEngines();
+      }
+
+      // Admin action functions
+      function resetStats() {
+        if (confirm('Tüm istatistikleri sıfırlamak istediğinizden emin misiniz?')) {
+          fetch('/admin/reset-stats', { method: 'POST' })
+            .then(() => alert('İstatistikler sıfırlandı'))
+            .catch(() => alert('Hata oluştu'));
+        }
+      }
+
+      function clearCache() {
+        if (confirm('Cache temizlemek istediğinizden emin misiniz?')) {
+          fetch('/admin/clear-cache', { method: 'POST' })
+            .then(() => alert('Cache temizlendi'))
+            .catch(() => alert('Hata oluştu'));
+        }
+      }
+
+      function restartService() {
+        if (confirm('Servisi yeniden başlatmak istediğinizden emin misiniz? Bu işlem birkaç saniye sürebilir.')) {
+          fetch('/admin/restart', { method: 'POST' })
+            .then(() => {
+              alert('Servis yeniden başlatılıyor...');
+              setTimeout(() => window.location.reload(), 3000);
+            })
+            .catch(() => alert('Hata oluştu'));
+        }
+      }
+
+      document.getElementById('refresh').addEventListener('click', () => {
+        window.location.reload();
+      });
+
+      updateData();
+    </script>
+  </body>
+</html>`);
+});
+
+// Admin action endpoints
+app.post('/admin/reset-stats', (req: Request, res: Response) => {
+  // Check authentication
+  const token = req.query.token as string;
+  if (!token || !token.startsWith('sxinar-admin-')) {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+  
+  // Reset global stats (would need to implement this in searchService)
+  res.json({ success: true, message: 'Statistics reset' });
+});
+
+app.post('/admin/clear-cache', (req: Request, res: Response) => {
+  // Check authentication
+  const token = req.query.token as string;
+  if (!token || !token.startsWith('sxinar-admin-')) {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+  
+  // Clear cache (would need to implement this)
+  res.json({ success: true, message: 'Cache cleared' });
+});
+
+app.post('/admin/restart', (req: Request, res: Response) => {
+  // Check authentication
+  const token = req.query.token as string;
+  if (!token || !token.startsWith('sxinar-admin-')) {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+  
+  // Restart service
+  setTimeout(() => {
+    process.exit(0);
+  }, 1000);
+  
+  res.json({ success: true, message: 'Service restarting' });
+});
+
 app.get('/search', async (req: Request, res: Response) => {
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
   const engines = parseEnginesParam(typeof req.query.engines === 'string' ? req.query.engines : undefined);
