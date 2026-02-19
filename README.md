@@ -1,6 +1,7 @@
 # Artstelve Proxy
 
-A high-performance, privacy-focused meta-search proxy and scraper aggregator.
+A high-performance, privacy-focused meta-search proxy and scraper aggregator
+![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/Sxinar/artstelve-proxy?utm_source=oss&utm_medium=github&utm_campaign=Sxinar%2Fartstelve-proxy&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
 
 ---
 
