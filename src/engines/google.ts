@@ -7,17 +7,20 @@ export const google: Engine = {
   async search({ query, limit, pageno = 1, signal }) {
     const start = (pageno - 1) * 10;
     
-    // gbv=1: Google'ın JavaScript gerektirmeyen hafif sürümünü zorlar.
-    // Bot koruması bu modda çok daha zayıftır.
-    const url = `https://www.google.com/search?q=${encodeURIComponent(query)}&start=${start}&gbv=1&num=${limit}`;
+    // STRATEJİ: Google'ın "Uygulama İçi Browser" (In-App) görünümünü taklit ediyoruz.
+    // Bu görünümde Captcha çıkma olasılığı çok daha düşüktür.
+    const url = `https://www.google.com/search?q=${encodeURIComponent(query)}&start=${start}&num=${limit}&client=safari&sca_esv=1&hl=tr&gl=tr&iflsig=AL9hS6EAAAAAZZgO...`;
 
     const res = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache'
+        // En kritik nokta: Google'ın botları en az şüphelendiği "iPhone Safari" User-Agent'ı
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,webp,*/*;q=0.8',
+        'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8',
+        'Referer': 'https://www.google.com/',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'same-origin'
       },
       signal
     });
@@ -26,28 +29,25 @@ export const google: Engine = {
     const $ = loadHtml(html);
     const out: SearchResult[] = [];
 
-    // LITE MOD SEÇİCİLERİ: Google Lite modunda 'div.g' yerine farklı yapılar kullanabilir.
-    // Bu seçiciler hem standart hem lite modu kapsar.
-    $('div.g, div.ZINbP, div.v7W49e').each((_, el) => {
+    // ÇOK KATMANLI SEÇİCİLER (Google'ın hem Masaüstü hem Mobil hem Lite sürümlerini tarar)
+    // 1. Standart sonuçlar (.g), 2. Mobil sonuçlar (.xpd), 3. Alternatifler (.tF2Cxc)
+    $('.g, .xpd, .tF2Cxc, .MjjYq').each((_, el) => {
       if (out.length >= limit) return;
 
-      // Başlık ve Link genellikle h3 içindeki a etiketindedir
-      const titleEl = $(el).find('h3');
-      const linkEl = $(el).find('a').first();
+      // Başlık: Mobil ve masaüstünde farklı sınıflarda olabilir
+      const title = $(el).find('h3, .vv77S, .VwiC3b').first().text().trim();
       
-      let title = titleEl.text().trim();
-      let rawUrl = linkEl.attr('href') || '';
-
-      // Google Lite modunda linkler genellikle /url?q= ile başlar
+      // URL: Bazı sürümlerde doğrudan link, bazılarında yönlendirme
+      let rawUrl = $(el).find('a').first().attr('href') || '';
+      
       if (rawUrl.startsWith('/url?q=')) {
-          const urlObj = new URL(rawUrl, 'https://www.google.com');
-          rawUrl = urlObj.searchParams.get('q') || rawUrl;
+        rawUrl = new URL(rawUrl, 'https://www.google.com').searchParams.get('q') || rawUrl;
       }
 
-      // Snippet: Google Lite modunda genellikle .VwiC3b yerine .BNeawe sınıfı kullanılır
-      const snippet = $(el).find('.VwiC3b, .BNeawe, .st, .MUFPAc').text().trim();
+      // Snippet: En değişken kısım burasıdır
+      const snippet = $(el).find('.VwiC3b, .BNeawe, .yXK7S, .MUFPAc').text().trim();
 
-      if (title && rawUrl && rawUrl.startsWith('http')) {
+      if (title && rawUrl && rawUrl.startsWith('http') && !rawUrl.includes('google.com')) {
         out.push({
           engine: 'google',
           title,
@@ -57,15 +57,18 @@ export const google: Engine = {
       }
     });
 
-    // --- KRİTİK HATA KONTROLÜ ---
+    // --- GELİŞMİŞ HATA ANALİZİ ---
     if (out.length === 0) {
-      const hay = html.toLowerCase();
-      if (hay.includes('captcha') || hay.includes('/sorry/') || res.status === 429) {
+      const lowerHtml = html.toLowerCase();
+      
+      // Bloklanıp bloklanmadığımızı anlamak için HTML'i analiz et
+      if (lowerHtml.includes('captcha') || lowerHtml.includes('/sorry/') || res.status === 429) {
         throw new Error(`blocked_or_captcha status=${res.status} url="google"`);
       }
-      
-      // Eğer hala sonuç yoksa, HTML'den bir parça loglayalım (Debug için)
-      console.log("HTML Snippet:", html.slice(0, 500)); 
+
+      // Eğer bloklanmadıysak ama sonuç yoksa, Google bize "Anasayfa"yı veya "Boş Arama"yı itelemiş olabilir.
+      // Bu durumda DuckDuckGo sonuçlarını Google formatında döndüren bir 'Fallback' tetiklenebilir.
+      console.error(`Google Scraping Failed. HTML Length: ${html.length}. First 200 chars: ${html.slice(0, 200)}`);
       throw new Error(`no_results_or_selector_mismatch status=${res.status} url="google"`);
     }
 
